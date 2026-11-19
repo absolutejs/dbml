@@ -167,3 +167,53 @@ export const emptyModel = (project?: DbmlProject): DbmlModel => ({
 	tableGroups: [],
 	tables: []
 });
+
+type Placed = { schema?: string };
+
+/* A place without its schema when that schema is the default one. */
+const unqualified = <Place extends Placed>(place: Place, schema: string) => {
+	if (place.schema !== schema) return place;
+	const { schema: dropped, ...rest } = place;
+	void dropped;
+
+	return rest;
+};
+
+/**
+ * The model as read from inside one schema: everything in `schema` loses
+ * its qualifier (`"orders"`, not `"app"."orders"`), the way a query run
+ * there would name it, and everything elsewhere keeps its own.
+ */
+export const withDefaultSchema = (model: DbmlModel, schema: string) => {
+	const result: DbmlModel = {
+		...model,
+		deps: model.deps.map((dep) => ({
+			...dep,
+			downstream: unqualified(dep.downstream, schema),
+			upstream: unqualified(dep.upstream, schema)
+		})),
+		enums: model.enums.map((entry) => unqualified(entry, schema)),
+		records: model.records.map((records) => unqualified(records, schema)),
+		refs: model.refs.map((ref) => ({
+			...ref,
+			from: unqualified(ref.from, schema),
+			to: unqualified(ref.to, schema)
+		})),
+		tableGroups: model.tableGroups.map((group) => ({
+			...group,
+			tables: group.tables.map((entry) => unqualified(entry, schema))
+		})),
+		tables: model.tables.map((table) => ({
+			...unqualified(table, schema),
+			columns: table.columns.map((column) => {
+				if (column.typeSchema !== schema) return column;
+				const { typeSchema: dropped, ...rest } = column;
+				void dropped;
+
+				return rest;
+			})
+		}))
+	};
+
+	return result;
+};

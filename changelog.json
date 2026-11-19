@@ -5,6 +5,21 @@
 		{
 			"changes": [
 				{
+					"detail": "fromPostgres takes a `defaultSchema`: the schema whose tables, enums and references are named without it, the way a query run there names them (`public` by default). An app whose tables live in their own schema now reads `\"orders\"` rather than `\"app_schema\".\"orders\"` on every table, while tables in any other schema, `public` included, keep their schema so two schemas never look alike. withDefaultSchema(model, schema) does the same to any model.",
+					"kind": "added",
+					"summary": "Name the app’s own schema without qualifying every table",
+					"symbols": [
+						"FromPostgresOptions",
+						"withDefaultSchema"
+					]
+				}
+			],
+			"date": "2026-11-19",
+			"version": "0.2.0"
+		},
+		{
+			"changes": [
+				{
 					"detail": "fromDrizzle reads a Drizzle 1.0 schema in any of its dialects (PostgreSQL, MySQL, SQLite, SingleStore, SQL Server, CockroachDB): tables, enums (named and inline), every column type and array, identity, serial and generated columns, defaults, composite and named keys, unique constraints, indexes with their order, method, expressions and predicates, checks, foreign keys with their actions, row-level security and policies, views and materialized views with lineage, sequences and roles, and both styles of relations, with app-only relations as inactive refs and many-to-many ones as <> refs. fromPostgres reads the same from a live database's catalogs, whatever made it, with comments as notes and optionally its first rows as Records. printDbml writes either as DBML, and every construct is tested against the official DBML parser. The absolute-dbml command does both from a terminal.",
 					"kind": "added",
 					"summary": "Turn a Drizzle schema, or a live Postgres database, into DBML"

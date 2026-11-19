@@ -9,7 +9,8 @@ import {
 	type DbmlRef,
 	type DbmlReferentialAction,
 	type DbmlTable,
-	emptyModel
+	emptyModel,
+	withDefaultSchema
 } from '../model';
 import {
 	COLUMNS,
@@ -61,6 +62,9 @@ export type FromPostgresOptions = {
 	/** Each table's first rows as DBML `Records`, read with the same query. */
 	records?: { limit: number };
 	project?: { name?: string; note?: string };
+	/** The schema whose tables are named without it, as a query run there
+	 *  names them: `public` unless the app keeps its tables elsewhere. */
+	defaultSchema?: string;
 	/** The schemas to read; every schema that isn't Postgres's own by
 	 *  default. */
 	schemas?: string[];
@@ -68,8 +72,9 @@ export type FromPostgresOptions = {
 
 const DEFAULT_SCHEMA = 'public';
 
-const inSchema = (schema: string) =>
-	schema === DEFAULT_SCHEMA ? {} : { schema };
+/* Every place is read with its schema; the default one is dropped at the
+ * end (withDefaultSchema), so two schemas' tables never look alike. */
+const inSchema = (schema: string) => ({ schema });
 
 const ACTIONS: Record<string, DbmlReferentialAction | undefined> = {
 	a: undefined,
@@ -184,9 +189,7 @@ const isSerial = (row: ColumnRow) =>
 	row.default?.startsWith('nextval(') === true;
 
 const enumSchema = (row: ColumnRow) =>
-	row.enumType && row.enumSchema && row.enumSchema !== DEFAULT_SCHEMA
-		? { typeSchema: row.enumSchema }
-		: {};
+	row.enumType && row.enumSchema ? { typeSchema: row.enumSchema } : {};
 
 const columnOf = (row: ColumnRow) => {
 	const serial = isSerial(row);
@@ -449,9 +452,7 @@ const readRecords = (
 			const records: DbmlRecords = {
 				columns,
 				rows: rows.map((row) =>
-					columns.map(
-						(column) => recordValue(row[column])
-					)
+					columns.map((column) => recordValue(row[column]))
 				),
 				...(table.schema ? { schema: table.schema } : {}),
 				table: table.name
@@ -515,11 +516,14 @@ const applyConstraints = (rows: ConstraintRow[], context: Context) =>
 		return false;
 	});
 
-const sequenceNote = (rows: ReturnType<typeof sequenceRow>[]) => ({
+const sequenceNote = (
+	rows: ReturnType<typeof sequenceRow>[],
+	defaultSchema: string
+) => ({
 	content: `Sequences\n${rows
 		.map(
 			(row) =>
-				`${row.schema === DEFAULT_SCHEMA ? '' : `${row.schema}.`}${row.name}: start ${row.start}, increment ${row.increment}`
+				`${row.schema === defaultSchema ? '' : `${row.schema}.`}${row.name}: start ${row.start}, increment ${row.increment}`
 		)
 		.join('\n')}`,
 	name: 'sequences'
@@ -584,11 +588,15 @@ const addDeps = (
 			});
 	});
 
-const addNotes = (model: DbmlModel, catalogs: Catalogs) => {
+const addNotes = (
+	model: DbmlModel,
+	catalogs: Catalogs,
+	defaultSchema: string
+) => {
 	if (catalogs.sequences.length > 0)
-		model.notes.push(sequenceNote(catalogs.sequences));
+		model.notes.push(sequenceNote(catalogs.sequences, defaultSchema));
 	const described = catalogs.comments.filter(
-		(row) => row.comment !== undefined && row.name !== DEFAULT_SCHEMA
+		(row) => row.comment !== undefined && row.name !== defaultSchema
 	);
 	if (described.length > 0)
 		model.notes.push({
@@ -631,7 +639,9 @@ export const fromPostgres = async (
 		])
 	);
 	const context: Context = {
-		relations, tables, columnName: (tableId, position) =>
+		relations,
+		tables,
+		columnName: (tableId, position) =>
 			names.get(`${tableId}:${position}`) ?? `${position}`
 	};
 	const foreign = applyConstraints(catalogs.constraints, context);
@@ -645,7 +655,8 @@ export const fromPostgres = async (
 			.filter((ref) => ref !== undefined)
 	);
 	addDeps(model, catalogs, relations);
-	addNotes(model, catalogs);
+	const defaultSchema = options.defaultSchema ?? DEFAULT_SCHEMA;
+	addNotes(model, catalogs, defaultSchema);
 	const limit = options.records?.limit ?? 0;
 	if (limit > 0)
 		model.records.push(
@@ -656,5 +667,5 @@ export const fromPostgres = async (
 			))
 		);
 
-	return model;
+	return withDefaultSchema(model, defaultSchema);
 };
