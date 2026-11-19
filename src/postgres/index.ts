@@ -10,10 +10,27 @@ import {
 	type DbmlReferentialAction,
 	type DbmlTable,
 	emptyModel,
+	groupBySchema,
 	withDefaultSchema
 } from '../model';
 import {
+	columnMetadata,
+	extraNotes,
+	indexNotes,
+	tableMetadata,
+	tableNoteLines
+} from './details';
+import {
 	COLUMNS,
+	COMPOSITES,
+	DOMAINS,
+	EVENT_TRIGGERS,
+	EXTENSIONS,
+	FUNCTIONS,
+	PARTITIONS,
+	RULES,
+	TRIGGERS,
+	VIEW_COLUMNS,
 	CONSTRAINTS,
 	ENUMS,
 	INDEXES,
@@ -27,6 +44,14 @@ import {
 import {
 	type ColumnRow,
 	columnRow,
+	compositeRow,
+	definitionRow,
+	domainRow,
+	eventTriggerRow,
+	extensionRow,
+	functionRow,
+	partitionRow,
+	viewColumnRow,
 	type ConstraintRow,
 	constraintRow,
 	enumRow,
@@ -65,9 +90,14 @@ export type FromPostgresOptions = {
 	/** The schema whose tables are named without it, as a query run there
 	 *  names them: `public` unless the app keeps its tables elsewhere. */
 	defaultSchema?: string;
+	/** `'schema'` groups tables by their schema. */
+	groups?: 'schema';
 	/** The schemas to read; every schema that isn't Postgres's own by
 	 *  default. */
 	schemas?: string[];
+	/** Each table's estimated rows and size on disk, as metadata. They
+	 *  change as the app runs, so they're left out unless asked for. */
+	statistics?: boolean;
 };
 
 const DEFAULT_SCHEMA = 'public';
@@ -204,6 +234,7 @@ const columnOf = (row: ColumnRow) => {
 		...(serial || row.identity ? { increment: true } : {}),
 		...(row.notNull ? { notNull: true } : {}),
 		...(fallback ? { default: fallback } : {}),
+		...columnMetadata(row),
 		...withNote(
 			joinNotes([
 				row.comment,
@@ -373,7 +404,14 @@ const indexOf = (row: IndexRow, context: Context) => {
 				row.predicate ? `Where ${row.predicate}` : undefined,
 				included.length > 0
 					? `Includes ${included.join(', ')}`
-					: undefined
+					: undefined,
+				...indexNotes(row, (part) => {
+					const position = row.attnums[part] ?? 0;
+
+					return position > 0
+						? context.columnName(row.tableId, position)
+						: (row.parts[part] ?? '');
+				})
 			])
 		)
 	};
@@ -407,13 +445,18 @@ const kindLine = (relation: RelationRow) => {
 	return `${kind}:\n${shown}`;
 };
 
-const tableNote = (relation: RelationRow, policies: PolicyRow[]) =>
+const tableNote = (
+	relation: RelationRow,
+	policies: PolicyRow[],
+	extra: string[]
+) =>
 	joinNotes([
 		relation.comment,
 		kindLine(relation),
 		relation.partitionKey
-			? `Partitioned by ${relation.partitionKey}, ${relation.partitions} partitions`
+			? `Partitioned by ${relation.partitionKey}`
 			: undefined,
+		...extra,
 		relation.rls
 			? `Row-level security is on${relation.forceRls ? ', for the owner too' : ''}`
 			: undefined,
@@ -464,23 +507,32 @@ const readRecords = (
 
 const tableOf = (
 	relation: RelationRow,
-	columns: ColumnRow[],
-	policies: PolicyRow[]
+	catalogs: Catalogs,
+	statistics: boolean
 ) => {
+	const own = <Row extends { tableId: number }>(rows: Row[]) =>
+		rows.filter((row) => row.tableId === relation.id);
 	const view = relation.kind === 'v' || relation.kind === 'm';
 	const table: DbmlTable = {
 		checks: [],
-		columns: columns
-			.filter((row) => row.tableId === relation.id)
-			.map(columnOf),
+		columns: own(catalogs.columns).map(columnOf),
 		...(view ? { headerColor: VIEW_COLOR } : {}),
 		indexes: [],
 		name: relation.name,
 		...inSchema(relation.schema),
+		...tableMetadata(relation, statistics),
 		...withNote(
 			tableNote(
 				relation,
-				policies.filter((row) => row.tableId === relation.id)
+				own(catalogs.policies),
+				tableNoteLines({
+					...(relation.inherits
+						? { inherits: relation.inherits }
+						: {}),
+					partitions: own(catalogs.partitions),
+					rules: own(catalogs.rules),
+					triggers: own(catalogs.triggers)
+				})
 			)
 		)
 	};
@@ -540,7 +592,16 @@ const readCatalogs = async (query: PostgresQuery, schemas: string[]) => {
 		sources,
 		policies,
 		sequences,
-		comments
+		comments,
+		triggers,
+		rules,
+		functions,
+		domains,
+		composites,
+		partitions,
+		viewColumns,
+		extensions,
+		eventTriggers
 	] = await Promise.all([
 		read(ENUMS),
 		read(RELATIONS),
@@ -550,7 +611,17 @@ const readCatalogs = async (query: PostgresQuery, schemas: string[]) => {
 		read(VIEW_SOURCES),
 		read(POLICIES),
 		read(SEQUENCES),
-		read(SCHEMA_COMMENTS)
+		read(SCHEMA_COMMENTS),
+		read(TRIGGERS),
+		read(RULES),
+		read(FUNCTIONS),
+		read(DOMAINS),
+		read(COMPOSITES),
+		read(PARTITIONS),
+		read(VIEW_COLUMNS),
+		/* Database-wide: they take no schemas. */
+		query(EXTENSIONS, []),
+		query(EVENT_TRIGGERS, [])
 	]);
 
 	return {
@@ -561,8 +632,17 @@ const readCatalogs = async (query: PostgresQuery, schemas: string[]) => {
 		indexes: indexes.map(indexRow),
 		policies: policies.map(policyRow),
 		relations: relations.map(relationRow),
+		composites: composites.map(compositeRow),
+		domains: domains.map(domainRow),
+		eventTriggers: eventTriggers.map(eventTriggerRow),
+		extensions: extensions.map(extensionRow),
+		functions: functions.map(functionRow),
+		partitions: partitions.map(partitionRow),
+		rules: rules.map(definitionRow),
 		sequences: sequences.map(sequenceRow),
-		sources: sources.map(viewSourceRow)
+		sources: sources.map(viewSourceRow),
+		triggers: triggers.map(definitionRow),
+		viewColumns: viewColumns.map(viewColumnRow)
 	};
 };
 
@@ -581,11 +661,23 @@ const addDeps = (
 	catalogs.sources.forEach((row) => {
 		const view = relations.get(row.viewId);
 		const source = relations.get(row.sourceId);
-		if (view && source)
-			model.deps.push({
-				downstream: { ...inSchema(view.schema), table: view.name },
-				upstream: { ...inSchema(source.schema), table: source.name }
-			});
+		if (!view || !source) return;
+		/* The columns the view reads from this source, when Postgres says. */
+		const columns = catalogs.viewColumns
+			.filter(
+				(entry) =>
+					entry.viewId === row.viewId &&
+					entry.sourceId === row.sourceId
+			)
+			.map((entry) => entry.name);
+		model.deps.push({
+			downstream: { ...inSchema(view.schema), table: view.name },
+			upstream: {
+				...(columns.length > 0 ? { columns } : {}),
+				...inSchema(source.schema),
+				table: source.name
+			}
+		});
 	});
 
 const addNotes = (
@@ -595,6 +687,7 @@ const addNotes = (
 ) => {
 	if (catalogs.sequences.length > 0)
 		model.notes.push(sequenceNote(catalogs.sequences, defaultSchema));
+	model.notes.push(...extraNotes(catalogs, defaultSchema));
 	const described = catalogs.comments.filter(
 		(row) => row.comment !== undefined && row.name !== defaultSchema
 	);
@@ -635,7 +728,7 @@ export const fromPostgres = async (
 	const tables = new Map(
 		catalogs.relations.map((row) => [
 			row.id,
-			tableOf(row, catalogs.columns, catalogs.policies)
+			tableOf(row, catalogs, options.statistics === true)
 		])
 	);
 	const context: Context = {
@@ -667,5 +760,9 @@ export const fromPostgres = async (
 			))
 		);
 
-	return withDefaultSchema(model, defaultSchema);
+	const result = withDefaultSchema(model, defaultSchema);
+	if (options.groups === 'schema')
+		result.tableGroups.push(...groupBySchema(result.tables, defaultSchema));
+
+	return result;
 };

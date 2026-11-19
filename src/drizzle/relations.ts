@@ -38,6 +38,8 @@ export type RelationLink = {
 	owner: object;
 	through?: object;
 	target: readonly Column[];
+	/* A filter the relation reads rows through (Drizzle 1.0's `where`). */
+	where?: unknown;
 };
 
 type RelationsV2 = Record<string, { relations: Record<string, Relation> }>;
@@ -62,17 +64,48 @@ const throughOf = (relation: Relation) =>
 		? relation.throughTable
 		: undefined;
 
+const filterOf = (relation: Relation) =>
+	'where' in relation && relation.where !== undefined
+		? { where: relation.where }
+		: {};
+
+/* A many declared with its own from and to (not the mirror of a one):
+ * the link runs from the many side's key to the one side, as a foreign
+ * key would. */
+const declaredMany = (field: string, relation: Relation) => {
+	if ('isReversed' in relation && relation.isReversed === true)
+		return undefined;
+	const link: RelationLink = {
+		field,
+		from: relation.targetColumns,
+		kind: 'one',
+		owner: relation.sourceTable,
+		target: relation.sourceColumns,
+		...filterOf(relation)
+	};
+
+	return link;
+};
+
 const v2Link = (field: string, relation: Relation) => {
 	const from = relation.sourceColumns;
 	const target = relation.targetColumns;
 	if (from.length === 0 || target.length === 0) return undefined;
 	const owner = relation.sourceTable;
 	if (is(relation, One)) {
-		const link: RelationLink = { field, from, kind: 'one', owner, target };
+		const link: RelationLink = {
+			field,
+			from,
+			kind: 'one',
+			owner,
+			target,
+			...filterOf(relation)
+		};
 
 		return link;
 	}
 	const through = throughOf(relation);
+	if (is(relation, Many) && !through) return declaredMany(field, relation);
 	if (!is(relation, Many) || !through) return undefined;
 	/* A plain many is the other side of a one, which carries the link; one
 	 * through a junction table is a many-to-many of its own. */
@@ -187,7 +220,11 @@ export const applyRelations = (options: Applying) => {
 		const from = endpointOf(options.lookup, link.from);
 		const target = endpointOf(options.lookup, link.target);
 		if (!from || !target) continue;
-		const field = `${options.lookup(link.owner)?.table ?? from.table}.${link.field}`;
+		const filter =
+			link.where === undefined
+				? ''
+				: ` where ${JSON.stringify(link.where)}`;
+		const field = `${options.lookup(link.owner)?.table ?? from.table}.${link.field}${filter}`;
 		const key = refKey({ from, to: target });
 		const existing = byKey.get(key);
 		if (existing)
