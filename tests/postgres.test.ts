@@ -365,6 +365,38 @@ describe('a live Postgres database', () => {
 		]);
 	});
 
+	test('the app’s own schema reads unqualified, and public gets its name', async () => {
+		const inBilling = await fromPostgres(query, {
+			defaultSchema: 'billing'
+		});
+		const invoices = inBilling.tables.find(
+			(entry) => entry.name === 'invoices'
+		);
+		expect(invoices?.schema).toBeUndefined();
+		expect(
+			invoices?.columns.find((entry) => entry.name === 'status')
+				?.typeSchema
+		).toBeUndefined();
+		expect(
+			inBilling.tables.find((entry) => entry.name === 'users')?.schema
+		).toBe('public');
+		expect(
+			inBilling.enums.find((entry) => entry.name === 'status')?.schema
+		).toBeUndefined();
+		expect(
+			inBilling.enums.find((entry) => entry.name === 'mood')?.schema
+		).toBe('public');
+		const ref = inBilling.refs.find(
+			(entry) => entry.from.table === 'invoices'
+		);
+		expect(ref?.from.schema).toBeUndefined();
+		expect(ref?.to.schema).toBe('public');
+		expect(
+			inBilling.notes.find((note) => note.name === 'sequences')?.content
+		).toBe('Sequences\npublic.invoice_numbers: start 1000, increment 10');
+		roundTrip(inBilling);
+	});
+
 	test('first rows as records, when asked', async () => {
 		const withRows = await fromPostgres(query, {
 			records: { limit: 5 },

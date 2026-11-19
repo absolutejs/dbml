@@ -78,10 +78,16 @@ const checkColumn = (
 	const where = `${table.name}.${column.name}`;
 	expect(field, where).toBeDefined();
 	if (!field) return;
-	const {type} = field;
+	const { type } = field;
 	const typeName = isRecord(type) ? type.type_name : undefined;
 	const typeSchema = isRecord(type) ? absent(type.schemaName) : undefined;
-	expect(typeName, where).toBe(column.type);
+	/* For an array of a schema's type, DBML keeps the schema both apart and
+	 * in the type's name (`public.mood[]`), however it's written. */
+	const expectedType =
+		column.typeSchema && column.type.endsWith('[]')
+			? `${column.typeSchema}.${column.type}`
+			: column.type;
+	expect(typeName, where).toBe(expectedType);
 	expect(typeSchema, where).toBe(column.typeSchema);
 	expect(field.pk === true, where).toBe(column.pk === true);
 	expect(field.unique === true, where).toBe(column.unique === true);
