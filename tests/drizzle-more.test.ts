@@ -20,7 +20,7 @@ describe('Drizzle 1.0 casing', () => {
 			]
 		);
 		const model = fromDrizzle({ events });
-		const table = model.tables[0];
+		const [table] = model.tables;
 		expect(table?.columns.map((column) => column.name)).toEqual([
 			'created_at',
 			'Explicit_Name',

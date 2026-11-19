@@ -5,6 +5,50 @@
 		{
 			"changes": [
 				{
+					"detail": "A Drizzle 1.0 relation with a `where` filter says its filter in the reference’s note, and a many declared with its own from and to becomes a link from the key to the one side, as a foreign key would be.",
+					"kind": "added",
+					"summary": "Drizzle: filtered relations, and many relations with their own keys"
+				},
+				{
+					"detail": "Tables and columns take `metadata`, a record of string, number and boolean facts, printed as DBML `Metadata Table` and `Metadata Column` blocks. A view dependency over several columns prints as one edge per column. groupBySchema and isUniqueSet are shared by every reader.",
+					"kind": "added",
+					"summary": "Metadata blocks for tables and columns",
+					"symbols": [
+						"DbmlColumn",
+						"DbmlTable",
+						"DbmlMetadata",
+						"groupBySchema",
+						"isUniqueSet"
+					]
+				},
+				{
+					"detail": "`@absolutejs/dbml/mysql` reads a live MySQL or MariaDB database from information_schema: exact column types, enums and sets, defaults, generated and invisible columns, prefix, expression and invisible indexes, checks, foreign keys, partitions, triggers, views with the tables they read, routines, scheduled events, and each table’s engine, collation and grants. `@absolutejs/dbml/sqlite` reads a SQLite database from its pragmas and CREATE statements: the row id key and AUTOINCREMENT, collations, generated columns, checks, expression and partial indexes, strict and WITHOUT ROWID tables, views and triggers. The CLI takes `--mysql <url>`, `--sqlite <file>` and `--statistics`, and only reads.",
+					"kind": "added",
+					"summary": "Live MySQL, MariaDB and SQLite databases",
+					"symbols": [
+						"fromMysql",
+						"FromMysqlOptions",
+						"MysqlQuery",
+						"fromSqlite",
+						"FromSqliteOptions",
+						"SqliteQuery"
+					]
+				},
+				{
+					"detail": "fromPostgres now reads what a database holds beyond tables, keys and indexes. On tables: owner, grants, unlogged, storage options, a foreign table’s server and options, and inheritance as metadata; triggers, rules and each partition with its bounds as lines of the note. On columns: collation, compression, the domain a column is of, and an identity sequence that doesn’t start at one. On indexes: nulls ordering, operator classes, collations and NULLS NOT DISTINCT. Functions and procedures, domains, composite types, extensions and event triggers come as sticky notes, a view’s lineage names the columns it reads, and anything an extension installed stays out. `statistics: true` adds estimated rows and size; `groups: 'schema'` groups tables by schema.",
+					"kind": "added",
+					"summary": "Postgres: triggers, rules, functions, domains, extensions, partitions, grants and more",
+					"symbols": [
+						"FromPostgresOptions"
+					]
+				}
+			],
+			"date": "2026-11-19",
+			"version": "0.3.0"
+		},
+		{
+			"changes": [
+				{
 					"detail": "fromPostgres takes a `defaultSchema`: the schema whose tables, enums and references are named without it, the way a query run there names them (`public` by default). An app whose tables live in their own schema now reads `\"orders\"` rather than `\"app_schema\".\"orders\"` on every table, while tables in any other schema, `public` included, keep their schema so two schemas never look alike. withDefaultSchema(model, schema) does the same to any model.",
 					"kind": "added",
 					"summary": "Name the app’s own schema without qualifying every table",

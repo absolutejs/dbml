@@ -625,24 +625,7 @@ const readCatalogs = async (query: PostgresQuery, schemas: string[]) => {
 	]);
 
 	return {
-		columns: columns.map(columnRow),
-		comments: comments.map(namedRow),
-		constraints: constraints.map(constraintRow),
-		enums: enums.map(enumRow),
-		indexes: indexes.map(indexRow),
-		policies: policies.map(policyRow),
-		relations: relations.map(relationRow),
-		composites: composites.map(compositeRow),
-		domains: domains.map(domainRow),
-		eventTriggers: eventTriggers.map(eventTriggerRow),
-		extensions: extensions.map(extensionRow),
-		functions: functions.map(functionRow),
-		partitions: partitions.map(partitionRow),
-		rules: rules.map(definitionRow),
-		sequences: sequences.map(sequenceRow),
-		sources: sources.map(viewSourceRow),
-		triggers: triggers.map(definitionRow),
-		viewColumns: viewColumns.map(viewColumnRow)
+		columns: columns.map(columnRow), comments: comments.map(namedRow), composites: composites.map(compositeRow), constraints: constraints.map(constraintRow), domains: domains.map(domainRow), enums: enums.map(enumRow), eventTriggers: eventTriggers.map(eventTriggerRow), extensions: extensions.map(extensionRow), functions: functions.map(functionRow), indexes: indexes.map(indexRow), partitions: partitions.map(partitionRow), policies: policies.map(policyRow), relations: relations.map(relationRow), rules: rules.map(definitionRow), sequences: sequences.map(sequenceRow), sources: sources.map(viewSourceRow), triggers: triggers.map(definitionRow), viewColumns: viewColumns.map(viewColumnRow)
 	};
 };
 

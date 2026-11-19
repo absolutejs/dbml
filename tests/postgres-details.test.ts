@@ -96,9 +96,8 @@ describe('what a Postgres database holds beyond its tables', () => {
 			owner: 'postgres',
 			rows: 2
 		});
-		expect(Number(table('people')?.metadata?.size_bytes)).toBeGreaterThan(
-			0
-		);
+		const size = table('people')?.metadata?.size_bytes;
+		expect(typeof size === 'number' && size > 0).toBe(true);
 		expect(table('scratch')?.metadata).toMatchObject({ unlogged: true });
 		expect(table('imported')?.metadata).toMatchObject({
 			foreign_options: 'filename=/dev/null, format=text',
