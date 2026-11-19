@@ -7,6 +7,7 @@ import type {
 	DbmlEnum,
 	DbmlIndex,
 	DbmlIndexPart,
+	DbmlMetadata,
 	DbmlModel,
 	DbmlRecords,
 	DbmlRecordValue,
@@ -177,22 +178,37 @@ const printRef = (ref: DbmlRef) =>
 		ref.note !== undefined && `note: ${quoteText(ref.note)}`
 	])}`;
 
-const printDepEnd = (end: DbmlDep['upstream']) => {
+const printDepEnd = (end: DbmlDep['upstream'], column?: string) => {
 	const table = qualified(end.schema, end.table);
-	if (!end.columns || end.columns.length === 0) return table;
 
-	return `${table}.${
-		end.columns.length === 1
-			? quoteName(end.columns[0] ?? '')
-			: `(${end.columns.map(quoteName).join(', ')})`
-	}`;
+	return column === undefined ? table : `${table}.${quoteName(column)}`;
+};
+
+/* One edge per column: DBML's parser refuses a schema-qualified column
+ * list in a dep, and an edge each says the same thing. */
+const depEdges = (dep: DbmlDep) => {
+	const upstream = dep.upstream.columns ?? [];
+	const downstream = dep.downstream.columns ?? [];
+	if (upstream.length <= 1 && downstream.length <= 1)
+		return [
+			`${printDepEnd(dep.upstream, upstream[0])} -> ${printDepEnd(dep.downstream, downstream[0])}`
+		];
+
+	return upstream.map(
+		(column, index) =>
+			`${printDepEnd(dep.upstream, column)} -> ${printDepEnd(dep.downstream, downstream[index])}`
+	);
 };
 
 const printDep = (dep: DbmlDep) => {
-	const edge = `${printDepEnd(dep.upstream)} -> ${printDepEnd(dep.downstream)}`;
-	if (dep.note === undefined) return `Dep: ${edge}`;
+	const edges = depEdges(dep);
+	if (dep.note === undefined && edges.length === 1)
+		return `Dep: ${edges[0] ?? ''}`;
 
-	return block('Dep', [edge, '', `note: ${quoteText(dep.note)}`]);
+	return block('Dep', [
+		...edges,
+		...(dep.note === undefined ? [] : ['', `note: ${quoteText(dep.note)}`])
+	]);
 };
 
 const printGroup = (group: TableGroupLike) =>
@@ -246,6 +262,42 @@ const printProject = (project: NonNullable<DbmlModel['project']>) =>
 			: [`Note: ${quoteText(project.note)}`])
 	]);
 
+const printMetadataValue = (value: boolean | number | string) =>
+	typeof value === 'string' ? quoteText(value) : `${value}`;
+
+/* A key DBML reads as one word: letters, digits and underscores. */
+const metadataKey = (key: string) => key.replace(/[^A-Za-z0-9_]/gu, '_');
+
+const metadataBlock = (title: string, metadata: DbmlMetadata | undefined) => {
+	const entries = Object.entries(metadata ?? {});
+	if (entries.length === 0) return [];
+
+	return [
+		block(
+			`Metadata ${title}`,
+			entries.map(
+				([key, value]) =>
+					`${metadataKey(key)}: ${printMetadataValue(value)}`
+			)
+		)
+	];
+};
+
+const printMetadata = (tables: DbmlTable[]) =>
+	tables.flatMap((table) => {
+		const name = qualified(table.schema, table.name);
+
+		return [
+			...metadataBlock(`Table ${name}`, table.metadata),
+			...table.columns.flatMap((column) =>
+				metadataBlock(
+					`Column ${name}.${quoteName(column.name)}`,
+					column.metadata
+				)
+			)
+		];
+	});
+
 /** The model as DBML text. */
 export const printDbml = (model: DbmlModel) => {
 	const { project } = model;
@@ -264,7 +316,8 @@ export const printDbml = (model: DbmlModel) => {
 		...model.notes.map(printNote),
 		...model.records
 			.filter((records) => records.rows.length > 0)
-			.map(printRecords)
+			.map(printRecords),
+		...printMetadata(model.tables)
 	];
 
 	return `${sections.join('\n\n')}\n`;

@@ -6,7 +6,7 @@
 	"bugs": {
 		"url": "https://github.com/absolutejs/dbml/issues"
 	},
-	"description": "Turn any Drizzle schema, or a live Postgres database, into DBML: tables, enums, keys, indexes, checks, relations and notes, with one model behind both.",
+	"description": "Turn any Drizzle schema, or a live Postgres, MySQL, MariaDB or SQLite database, into DBML: tables, enums, keys, indexes, checks, relations and notes, with one model behind both.",
 	"devDependencies": {
 		"@absolutejs/changelog": "^0.6.0",
 		"@dbml/core": "12.1.0",
@@ -34,10 +34,20 @@
 			"import": "./dist/drizzle/index.js",
 			"types": "./dist/drizzle/index.d.ts"
 		},
+		"./mysql": {
+			"default": "./dist/mysql/index.js",
+			"import": "./dist/mysql/index.js",
+			"types": "./dist/mysql/index.d.ts"
+		},
 		"./postgres": {
 			"default": "./dist/postgres/index.js",
 			"import": "./dist/postgres/index.js",
 			"types": "./dist/postgres/index.d.ts"
+		},
+		"./sqlite": {
+			"default": "./dist/sqlite/index.js",
+			"import": "./dist/sqlite/index.js",
+			"types": "./dist/sqlite/index.d.ts"
 		}
 	},
 	"files": [
@@ -53,6 +63,9 @@
 		"drizzle",
 		"drizzle-orm",
 		"postgres",
+		"mysql",
+		"mariadb",
+		"sqlite",
 		"schema",
 		"erd",
 		"diagram"
@@ -76,7 +89,7 @@
 		"url": "https://github.com/absolutejs/dbml.git"
 	},
 	"scripts": {
-		"build": "rm -rf dist && bun build src/index.ts src/drizzle/index.ts src/postgres/index.ts src/cli.ts --outdir dist --root ./src --target=bun --external drizzle-orm && tsc --emitDeclarationOnly --project tsconfig.build.json",
+		"build": "rm -rf dist && bun build src/index.ts src/drizzle/index.ts src/postgres/index.ts src/mysql/index.ts src/sqlite/index.ts src/cli.ts --outdir dist --root ./src --target=bun --external drizzle-orm && tsc --emitDeclarationOnly --project tsconfig.build.json",
 		"check:package": "bun run typecheck && bun run lint && bun run build && bun run test && absolute-changelog check",
 		"format": "prettier --write \"./**/*.{ts,json,mjs,md}\"",
 		"lint": "eslint ./",
@@ -86,5 +99,5 @@
 	},
 	"type": "module",
 	"types": "./dist/index.d.ts",
-	"version": "0.2.0"
+	"version": "0.3.0"
 }

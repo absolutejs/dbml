@@ -69,6 +69,19 @@ const checkDefault = (
 	expect(`${read?.value}`, where).toBe(`${column.default.value}`);
 };
 
+/* Metadata as the parser keeps it: each value with its type and place. */
+const metadataOf = (owner: unknown) => {
+	const metadata: unknown = isRecord(owner) ? owner.metadata : undefined;
+	if (!isRecord(metadata)) return {};
+
+	return Object.fromEntries(
+		Object.entries(metadata).map(([key, entry]) => [
+			key,
+			isRecord(entry) ? entry.value : entry
+		])
+	);
+};
+
 const checkColumn = (
 	read: ParsedTable,
 	table: DbmlTable,
@@ -95,6 +108,9 @@ const checkColumn = (
 	expect(field.increment === true, where).toBe(column.increment === true);
 	expect(absent(field.note), where).toBe(column.note);
 	checkDefault(field, column, where);
+	expect(metadataOf(field), `${where} metadata`).toEqual(
+		column.metadata ?? {}
+	);
 };
 
 const checkIndexes = (read: ParsedTable, table: DbmlTable) => {
@@ -156,6 +172,9 @@ const checkTable = (table: DbmlTable, checking: Checking) => {
 	table.columns.forEach((column) => checkColumn(read, table, column));
 	checkIndexes(read, table);
 	checkChecks(table, checking);
+	expect(metadataOf(read), `${table.name} metadata`).toEqual(
+		table.metadata ?? {}
+	);
 };
 
 const endsMatch = (parsed: ParsedRef, ref: DbmlRef) => {
@@ -237,7 +256,13 @@ export const roundTrip = (model: DbmlModel) => {
 
 	expect(parsed.schemas.flatMap(depEdges).sort()).toEqual(
 		model.deps
-			.map((dep) => `${dep.upstream.table}>${dep.downstream.table}`)
+			/* A dep over several columns prints as an edge per column. */
+			.flatMap((dep) =>
+				Array.from(
+					{ length: Math.max(1, dep.upstream.columns?.length ?? 0) },
+					() => `${dep.upstream.table}>${dep.downstream.table}`
+				)
+			)
 			.sort()
 	);
 	expect(

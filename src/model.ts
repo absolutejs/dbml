@@ -36,12 +36,17 @@ export type DbmlDefault =
 	| { kind: 'number'; value: number | string }
 	| { kind: 'string'; value: string };
 
+/** Facts about a table or column as key and value, DBML's `Metadata`:
+ *  an owner, a row count, a collation. Keys are bare words. */
+export type DbmlMetadata = Record<string, boolean | number | string>;
+
 export type DbmlColumn = {
 	/** Column-level checks, each a SQL expression. */
 	checks?: string[];
 	default?: DbmlDefault;
 	/** An identity, serial or auto-increment column. */
 	increment?: boolean;
+	metadata?: DbmlMetadata;
 	name: string;
 	note?: string;
 	notNull?: boolean;
@@ -77,6 +82,7 @@ export type DbmlTable = {
 	columns: DbmlColumn[];
 	headerColor?: DbmlColor;
 	indexes: DbmlIndex[];
+	metadata?: DbmlMetadata;
 	name: string;
 	note?: string;
 	schema?: string;
@@ -216,4 +222,58 @@ export const withDefaultSchema = (model: DbmlModel, schema: string) => {
 	};
 
 	return result;
+};
+
+/** Table groups, one per schema, in the order tables first appear. */
+export const groupBySchema = (
+	tables: DbmlTable[],
+	defaultSchema = 'public'
+) => {
+	const byName = new Map<string, DbmlTableGroup['tables']>();
+	tables.forEach((table) => {
+		const name = table.schema ?? defaultSchema;
+		byName.set(name, [
+			...(byName.get(name) ?? []),
+			{
+				...(table.schema ? { schema: table.schema } : {}),
+				table: table.name
+			}
+		]);
+	});
+
+	return [...byName].map(([name, members]) => {
+		const group: DbmlTableGroup = { name, tables: members };
+
+		return group;
+	});
+};
+
+const sortedColumns = (index: DbmlIndex) =>
+	index.parts
+		.map((part) => (part.kind === 'column' ? part.column : ''))
+		.sort()
+		.join('\0');
+
+/* A unique index with a predicate is unique only over some rows. */
+const coversAll = (index: DbmlIndex) =>
+	index.pk === true ||
+	(index.unique === true && index.note?.includes('Where ') !== true);
+
+/** Whether these columns alone are unique in the table: a one-to-one link
+ *  rather than many-to-one when they're what a foreign key holds. */
+export const isUniqueSet = (table: DbmlTable, columns: string[]) => {
+	const [only] = columns;
+	const single =
+		columns.length === 1
+			? table.columns.find((column) => column.name === only)
+			: undefined;
+	if (single?.pk === true || single?.unique === true) return true;
+	const wanted = [...columns].sort().join('\0');
+
+	return table.indexes.some(
+		(index) =>
+			coversAll(index) &&
+			index.parts.every((part) => part.kind === 'column') &&
+			sortedColumns(index) === wanted
+	);
 };

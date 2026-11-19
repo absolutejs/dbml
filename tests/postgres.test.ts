@@ -125,7 +125,7 @@ describe('a live Postgres database', () => {
 			].sort()
 		);
 		expect(table('events')?.note).toBe(
-			'Partitioned table\nPartitioned by RANGE (at), 1 partitions'
+			"Partitioned table\nPartitioned by RANGE (at)\nPartition events_2026: FOR VALUES FROM ('2026-01-01 00:00:00+00') TO ('2027-01-01 00:00:00+00')"
 		);
 	});
 
@@ -238,7 +238,7 @@ describe('a live Postgres database', () => {
 			},
 			{
 				name: 'users_score',
-				note: 'Includes handle',
+				note: 'Includes handle\nSorted with score nulls last',
 				parts: [
 					{ column: 'score', desc: true, kind: 'column' },
 					{ column: 'id', kind: 'column' }
@@ -395,6 +395,20 @@ describe('a live Postgres database', () => {
 			inBilling.notes.find((note) => note.name === 'sequences')?.content
 		).toBe('Sequences\npublic.invoice_numbers: start 1000, increment 10');
 		roundTrip(inBilling);
+	});
+
+	test('groups by schema when asked', async () => {
+		const grouped = await fromPostgres(query, { groups: 'schema' });
+		expect(
+			grouped.tableGroups.map((group) => [
+				group.name,
+				group.tables.length
+			])
+		).toEqual([
+			['billing', 1],
+			['public', 6]
+		]);
+		roundTrip(grouped);
 	});
 
 	test('first rows as records, when asked', async () => {
