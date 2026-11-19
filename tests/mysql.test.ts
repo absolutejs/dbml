@@ -3,7 +3,7 @@ import { SQL } from 'bun';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { DbmlModel } from '../src/model';
 import { fromMysql } from '../src/mysql';
-import { roundTrip } from './roundTrip';
+import { printedNote, roundTrip } from './roundTrip';
 
 /* Runs against a real MySQL (or MariaDB) when DBML_MYSQL_URL names a
  * throwaway one, e.g. `docker run -e MYSQL_ROOT_PASSWORD=probe
@@ -169,9 +169,9 @@ describe.skipIf(!url)('a live MySQL database', () => {
 			metadata: { engine: 'InnoDB' },
 			note: 'Everyone'
 		});
-		expect(table('logs')?.note).toContain('Partition p2025');
-		expect(table('posts')?.note).toContain(
-			'Trigger posts_touch BEFORE UPDATE'
+		expect(printedNote(table('logs'))).toContain('Partition p2025');
+		expect(printedNote(table('posts'))).toContain(
+			'Trigger posts_touch: BEFORE UPDATE'
 		);
 		expect(table('author_posts')?.headerColor).toBe('#64748b');
 		expect(model.deps.map((dep) => dep.upstream.table).sort()).toEqual([

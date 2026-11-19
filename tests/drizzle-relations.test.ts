@@ -4,7 +4,7 @@ import { relations } from 'drizzle-orm/_relations';
 import * as pg from 'drizzle-orm/pg-core';
 import * as sqlite from 'drizzle-orm/sqlite-core';
 import { fromDrizzle } from '../src/drizzle';
-import { roundTrip } from './roundTrip';
+import { printedNote, roundTrip } from './roundTrip';
 
 const users = pg.pgTable('users', {
 	id: pg.integer().primaryKey(),
@@ -171,7 +171,7 @@ describe('views', () => {
 	test('a view is a table set apart, with lineage from every table it reads', () => {
 		roundTrip(model);
 		expect(view?.headerColor).toBe('#64748b');
-		expect(view?.note).toBe(
+		expect(printedNote(view)).toBe(
 			'View:\nselect "users"."name", count(*) as "count", "posts"."id" from "posts" left join "users" on "users"."id" = "posts"."author_id"'
 		);
 		expect(
@@ -193,7 +193,7 @@ describe('views', () => {
 
 	test('a view that already exists says its query lives in the database', () => {
 		expect(
-			model.tables.find((table) => table.name === 'totals')?.note
+			printedNote(model.tables.find((table) => table.name === 'totals'))
 		).toBe(
 			'Materialized view that already exists in the database; its query lives there'
 		);

@@ -10,6 +10,8 @@ import {
 	type DbmlReferentialAction,
 	type DbmlStickyNote,
 	type DbmlTable,
+	type DbmlTableDetail,
+	detailWhen,
 	emptyModel,
 	groupBySchema,
 	isUniqueSet,
@@ -365,21 +367,38 @@ const readCatalog = async (query: MysqlQuery, schemas: string[]) => {
 	return catalog;
 };
 
-const triggerLine = (row: Row) =>
-	`Trigger ${text(row.trigger_name)} ${text(row.action_timing)} ${text(row.event_manipulation)}: ${(text(row.action_statement) ?? '').replace(/\s+/gu, ' ')}`;
+const triggerDetail = (row: Row) => {
+	const detail: DbmlTableDetail = {
+		kind: 'trigger',
+		name: text(row.trigger_name) ?? '',
+		text: `${text(row.action_timing)} ${text(row.event_manipulation)}, ${(text(row.action_statement) ?? '').replace(/\s+/gu, ' ')}`
+	};
 
-const partitionLines = (rows: Row[]) => {
+	return detail;
+};
+
+const partitionDetails = (rows: Row[]) => {
 	const named = rows.filter((row) => text(row.partition_name));
 	const [first] = named;
 	if (!first) return [];
+	const details: DbmlTableDetail[] = [
+		{
+			kind: 'partitioned_by',
+			text: `${text(first.partition_method)} (${text(first.partition_expression)})`
+		},
+		...named.map((row) => {
+			const bound = text(row.partition_description);
+			const detail: DbmlTableDetail = {
+				kind: 'partition',
+				name: text(row.partition_name) ?? '',
+				...(bound ? { text: bound } : {})
+			};
 
-	return [
-		`Partitioned by ${text(first.partition_method)} (${text(first.partition_expression)})`,
-		...named.map(
-			(row) =>
-				`Partition ${text(row.partition_name)}${text(row.partition_description) ? `: ${text(row.partition_description)}` : ''}`
-		)
+			return detail;
+		})
 	];
+
+	return details;
 };
 
 const routineNote = (catalog: Catalog) => {
@@ -638,14 +657,15 @@ export const fromMysql = async (
 						: {})
 				}
 			: tableMetadata(row, context, grantLine || undefined);
-		const notes = [
-			text(row.table_comment) && text(row.table_comment) !== 'VIEW'
-				? text(row.table_comment)
-				: undefined,
-			view ? `View:\n${text(view.view_definition) ?? ''}` : undefined,
-			...partitionLines(partitions.get(key) ?? []),
-			...(triggers.get(key) ?? []).map(triggerLine)
-		].filter((line) => line !== undefined && line !== '');
+		const comment = text(row.table_comment);
+		const details: DbmlTableDetail[] = [
+			...detailWhen(view, {
+				kind: 'view',
+				text: text(view?.view_definition) ?? ''
+			}),
+			...partitionDetails(partitions.get(key) ?? []),
+			...(triggers.get(key) ?? []).map(triggerDetail)
+		];
 		const table: DbmlTable = {
 			checks: (checks.get(key) ?? []).filter(isOwnCheck).map((check) => ({
 				expression: (text(check.check_clause) ?? '').replace(
@@ -659,7 +679,8 @@ export const fromMysql = async (
 			indexes: [],
 			...(Object.keys(metadata).length > 0 ? { metadata } : {}),
 			name,
-			...(notes.length > 0 ? { note: notes.join('\n') } : {}),
+			...(details.length > 0 ? { details } : {}),
+			...(comment && comment !== 'VIEW' ? { note: comment } : {}),
 			schema
 		};
 		[...indexes.entries()]
