@@ -9,6 +9,8 @@ import {
 	type DbmlRef,
 	type DbmlReferentialAction,
 	type DbmlTable,
+	type DbmlTableDetail,
+	detailWhen,
 	emptyModel,
 	groupBySchema,
 	withDefaultSchema
@@ -18,7 +20,7 @@ import {
 	extraNotes,
 	indexNotes,
 	tableMetadata,
-	tableNoteLines
+	tableDetails
 } from './details';
 import {
 	COLUMNS,
@@ -169,13 +171,6 @@ export const parseDefault = (expression: string) => {
 		return quotedDefault(inner, type ?? '', expression);
 
 	return { kind: 'expression', value: expression } satisfies DbmlDefault;
-};
-
-const KINDS: Record<string, string> = {
-	f: 'Foreign table',
-	m: 'Materialized view',
-	p: 'Partitioned table',
-	v: 'View'
 };
 
 const VIEW_COLOR = '#64748b';
@@ -419,49 +414,72 @@ const indexOf = (row: IndexRow, context: Context) => {
 	return index;
 };
 
-const policyLine = (row: PolicyRow) =>
-	[
-		`Policy ${row.name}`,
-		row.permissive ? undefined : 'restrictive',
-		`for ${POLICY_COMMANDS[row.command] ?? 'all'}`,
-		`to ${row.roles.join(', ')}`,
-		row.using ? `using (${row.using})` : undefined,
-		row.withCheck ? `with check (${row.withCheck})` : undefined
-	]
-		.filter((part): part is string => part !== undefined)
-		.join(' ');
+const policyDetail = (row: PolicyRow) => {
+	const detail: DbmlTableDetail = {
+		kind: 'policy',
+		name: row.name,
+		text: [
+			row.permissive ? undefined : 'restrictive',
+			`for ${POLICY_COMMANDS[row.command] ?? 'all'}`,
+			`to ${row.roles.join(', ')}`,
+			row.using ? `using (${row.using})` : undefined,
+			row.withCheck ? `with check (${row.withCheck})` : undefined
+		]
+			.filter((part): part is string => part !== undefined)
+			.join(' ')
+	};
+
+	return detail;
+};
 
 const MAX_DEFINITION = 600;
 
-const kindLine = (relation: RelationRow) => {
-	const kind = KINDS[relation.kind];
-	const definition = relation.definition?.trim();
-	if (!kind || !definition) return kind;
-	const shown =
-		definition.length > MAX_DEFINITION
-			? `${definition.slice(0, MAX_DEFINITION)}…`
-			: definition;
-
-	return `${kind}:\n${shown}`;
+const KIND_DETAILS: Record<
+	string,
+	'foreign_table' | 'materialized_view' | 'partitioned_table' | 'view'
+> = {
+	f: 'foreign_table',
+	m: 'materialized_view',
+	p: 'partitioned_table',
+	v: 'view'
 };
 
-const tableNote = (
+const kindDetail = (relation: RelationRow) => {
+	const kind = KIND_DETAILS[relation.kind];
+	if (!kind) return [];
+	const definition = relation.definition?.trim();
+	if (kind !== 'view' && kind !== 'materialized_view') return [{ kind }];
+	const shown =
+		definition && definition.length > MAX_DEFINITION
+			? `${definition.slice(0, MAX_DEFINITION)}…`
+			: definition;
+	const detail: DbmlTableDetail = { kind, ...(shown ? { text: shown } : {}) };
+
+	return [detail];
+};
+
+/* What a table is and does, in the order its note says it. */
+const relationDetails = (
 	relation: RelationRow,
 	policies: PolicyRow[],
-	extra: string[]
-) =>
-	joinNotes([
-		relation.comment,
-		kindLine(relation),
-		relation.partitionKey
-			? `Partitioned by ${relation.partitionKey}`
-			: undefined,
+	extra: DbmlTableDetail[]
+) => {
+	const details: DbmlTableDetail[] = [
+		...kindDetail(relation),
+		...detailWhen(relation.partitionKey, {
+			kind: 'partitioned_by',
+			text: relation.partitionKey ?? ''
+		}),
 		...extra,
-		relation.rls
-			? `Row-level security is on${relation.forceRls ? ', for the owner too' : ''}`
-			: undefined,
-		...policies.map(policyLine)
-	]);
+		...detailWhen(relation.rls, {
+			kind: 'row_security',
+			...(relation.forceRls ? { forced: true } : {})
+		}),
+		...policies.map(policyDetail)
+	];
+
+	return details.length > 0 ? { details } : {};
+};
 
 /* A record value as DBML can hold one. */
 const recordValue = (value: unknown) => {
@@ -521,20 +539,17 @@ const tableOf = (
 		name: relation.name,
 		...inSchema(relation.schema),
 		...tableMetadata(relation, statistics),
-		...withNote(
-			tableNote(
-				relation,
-				own(catalogs.policies),
-				tableNoteLines({
-					...(relation.inherits
-						? { inherits: relation.inherits }
-						: {}),
-					partitions: own(catalogs.partitions),
-					rules: own(catalogs.rules),
-					triggers: own(catalogs.triggers)
-				})
-			)
-		)
+		...relationDetails(
+			relation,
+			own(catalogs.policies),
+			tableDetails({
+				...(relation.inherits ? { inherits: relation.inherits } : {}),
+				partitions: own(catalogs.partitions),
+				rules: own(catalogs.rules),
+				triggers: own(catalogs.triggers)
+			})
+		),
+		...withNote(relation.comment)
 	};
 
 	return table;
@@ -625,7 +640,24 @@ const readCatalogs = async (query: PostgresQuery, schemas: string[]) => {
 	]);
 
 	return {
-		columns: columns.map(columnRow), comments: comments.map(namedRow), composites: composites.map(compositeRow), constraints: constraints.map(constraintRow), domains: domains.map(domainRow), enums: enums.map(enumRow), eventTriggers: eventTriggers.map(eventTriggerRow), extensions: extensions.map(extensionRow), functions: functions.map(functionRow), indexes: indexes.map(indexRow), partitions: partitions.map(partitionRow), policies: policies.map(policyRow), relations: relations.map(relationRow), rules: rules.map(definitionRow), sequences: sequences.map(sequenceRow), sources: sources.map(viewSourceRow), triggers: triggers.map(definitionRow), viewColumns: viewColumns.map(viewColumnRow)
+		columns: columns.map(columnRow),
+		comments: comments.map(namedRow),
+		composites: composites.map(compositeRow),
+		constraints: constraints.map(constraintRow),
+		domains: domains.map(domainRow),
+		enums: enums.map(enumRow),
+		eventTriggers: eventTriggers.map(eventTriggerRow),
+		extensions: extensions.map(extensionRow),
+		functions: functions.map(functionRow),
+		indexes: indexes.map(indexRow),
+		partitions: partitions.map(partitionRow),
+		policies: policies.map(policyRow),
+		relations: relations.map(relationRow),
+		rules: rules.map(definitionRow),
+		sequences: sequences.map(sequenceRow),
+		sources: sources.map(viewSourceRow),
+		triggers: triggers.map(definitionRow),
+		viewColumns: viewColumns.map(viewColumnRow)
 	};
 };
 

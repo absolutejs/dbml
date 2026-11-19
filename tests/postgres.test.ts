@@ -6,7 +6,7 @@ import {
 	parseDefault,
 	type PostgresQuery
 } from '../src/postgres';
-import { roundTrip } from './roundTrip';
+import { printedNote, roundTrip } from './roundTrip';
 
 /* A real Postgres (PGlite: Postgres compiled to WebAssembly, in this
  * process), built by hand-written SQL, so the catalogs are read as any
@@ -124,7 +124,7 @@ describe('a live Postgres database', () => {
 				[undefined, 'users']
 			].sort()
 		);
-		expect(table('events')?.note).toBe(
+		expect(printedNote(table('events'))).toBe(
 			"Partitioned table\nPartitioned by RANGE (at)\nPartition events_2026: FOR VALUES FROM ('2026-01-01 00:00:00+00') TO ('2027-01-01 00:00:00+00')"
 		);
 	});
@@ -174,7 +174,7 @@ describe('a live Postgres database', () => {
 			type: 'character varying(255)',
 			unique: true
 		});
-		expect(table('users')?.note).toBe(
+		expect(printedNote(table('users'))).toBe(
 			'People who can sign in\nRow-level security is on\nPolicy own for select to public using (id = 1)'
 		);
 	});
@@ -337,10 +337,12 @@ describe('a live Postgres database', () => {
 	test('views and materialized views, with lineage from what they read', () => {
 		expect(table('open_invoices')?.headerColor).toBe('#64748b');
 		expect(
-			table('open_invoices')?.note?.startsWith('View:\nSELECT i.id')
+			printedNote(table('open_invoices'))?.startsWith(
+				'View:\nSELECT i.id'
+			)
 		).toBe(true);
 		expect(
-			table('user_counts')?.note?.startsWith('Materialized view:')
+			printedNote(table('user_counts'))?.startsWith('Materialized view:')
 		).toBe(true);
 		expect(
 			model.deps

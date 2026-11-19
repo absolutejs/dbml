@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite';
 import { describe, expect, test } from 'bun:test';
 import { fromSqlite } from '../src/sqlite';
-import { roundTrip } from './roundTrip';
+import { printedNote, roundTrip } from './roundTrip';
 
 /* A real SQLite database (bun:sqlite, in memory), built by hand-written
  * SQL. */
@@ -153,8 +153,8 @@ describe('a live SQLite database', () => {
 			'posts',
 			'users'
 		]);
-		expect(table('posts')?.note).toBe(
-			'Trigger posts_touch after update on posts begin update posts set slug = slug where id = new.id; end'
+		expect(printedNote(table('posts'))).toBe(
+			'Trigger posts_touch: after update on posts begin update posts set slug = slug where id = new.id; end'
 		);
 	});
 });

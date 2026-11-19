@@ -7,7 +7,7 @@ import {
 	Table,
 	View
 } from 'drizzle-orm';
-import type { DbmlColumn, DbmlTable } from '../model';
+import type { DbmlColumn, DbmlTable, DbmlTableDetail } from '../model';
 import { sqlText, sqlTextQualified, type ViewConfig } from './dialects';
 
 /*
@@ -113,12 +113,17 @@ const MAX_QUERY = 600;
 const shortened = (query: string) =>
 	query.length > MAX_QUERY ? `${query.slice(0, MAX_QUERY)}…` : query;
 
-const viewNote = (config: ViewConfig, kind: string) => {
-	if (config.isExisting)
-		return `${kind} that already exists in the database; its query lives there`;
-	if (!config.query) return kind;
+const viewDetail = (config: ViewConfig, kind: 'materialized_view' | 'view') => {
+	const detail: DbmlTableDetail = config.isExisting
+		? { existing: true, kind }
+		: {
+				kind,
+				...(config.query
+					? { text: shortened(sqlTextQualified(config.query)) }
+					: {})
+			};
 
-	return `${kind}:\n${shortened(sqlTextQualified(config.query))}`;
+	return detail;
 };
 
 export const viewOf = (
@@ -131,10 +136,12 @@ export const viewOf = (
 		columns: Object.entries(config.selectedFields).map(([name, field]) =>
 			columnOfField(name, field, sources)
 		),
+		details: [
+			viewDetail(config, materialized ? 'materialized_view' : 'view')
+		],
 		headerColor: VIEW_COLOR,
 		indexes: [],
 		name: config.name,
-		note: viewNote(config, materialized ? 'Materialized view' : 'View'),
 		...(config.schema ? { schema: config.schema } : {})
 	};
 

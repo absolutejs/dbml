@@ -1,4 +1,9 @@
-import type { DbmlMetadata, DbmlStickyNote } from '../model';
+import {
+	type DbmlMetadata,
+	type DbmlStickyNote,
+	type DbmlTableDetail,
+	detailWhen
+} from '../model';
 import type {
 	ColumnRow,
 	compositeRow,
@@ -128,32 +133,56 @@ export const tableMetadata = (relation: RelationRow, statistics: boolean) => {
 
 const DISABLED = 'D';
 
-/* A trigger or rule as Postgres would create it, without the CREATE. */
-const definitionLine = (kind: string, entry: Definition) => {
-	const body = entry.definition.replace(
-		/^CREATE (OR REPLACE )?(CONSTRAINT )?(TRIGGER|RULE) /u,
-		''
-	);
+/* A trigger or rule as Postgres would create it, without the CREATE, its
+ * name or (a rule's) AS, on one line. */
+const definitionDetail = (kind: 'rule' | 'trigger', entry: Definition) => {
+	const body = entry.definition
+		.replace(
+			/^CREATE (?:OR REPLACE )?(?:CONSTRAINT )?(?:TRIGGER|RULE) (?:"(?:[^"]|"")+"|\S+)\s+(?:AS\s+)?/u,
+			''
+		)
+		.replace(/\s+/gu, ' ')
+		.trim();
+	const detail: DbmlTableDetail = {
+		...(entry.enabled === DISABLED ? { disabled: true } : {}),
+		kind,
+		name: entry.name,
+		text: body
+	};
 
-	return `${kind} ${body}${entry.enabled === DISABLED ? ' (disabled)' : ''}`;
+	return detail;
 };
 
-/** Lines for a table's note: its triggers, rules, partitions and what it
- *  inherits from. */
-export const tableNoteLines = (input: {
+/** A table's details: what it inherits from, its partitions, triggers
+ *  and rules. */
+export const tableDetails = (input: {
 	inherits?: string;
 	partitions: ReturnType<typeof partitionRow>[];
 	rules: Definition[];
 	triggers: Definition[];
-}) =>
-	present([
-		input.inherits ? `Inherits from ${input.inherits}` : undefined,
-		...input.partitions.map(
-			(partition) => `Partition ${partition.name}: ${partition.bound}`
+}) => {
+	const details: DbmlTableDetail[] = [
+		...detailWhen(input.inherits, {
+			kind: 'inherits',
+			text: input.inherits ?? ''
+		}),
+		...input.partitions.map((partition) => {
+			const detail: DbmlTableDetail = {
+				kind: 'partition',
+				name: partition.name,
+				text: partition.bound
+			};
+
+			return detail;
+		}),
+		...input.triggers.map((trigger) =>
+			definitionDetail('trigger', trigger)
 		),
-		...input.triggers.map((trigger) => definitionLine('Trigger', trigger)),
-		...input.rules.map((rule) => definitionLine('Rule', rule))
-	]);
+		...input.rules.map((rule) => definitionDetail('rule', rule))
+	];
+
+	return details;
+};
 
 const KINDS: Record<string, string> = {
 	a: 'aggregate',

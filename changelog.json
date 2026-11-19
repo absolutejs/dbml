@@ -5,6 +5,28 @@
 		{
 			"changes": [
 				{
+					"detail": "What a table is and does beyond its columns is now data: `table.details` lists its kind (a view with its query, a materialized view, a partitioned or foreign table), what it is partitioned by and its partitions, what it inherits from, its triggers and rules (each with its name and definition on one line), and row-level security with its policies. The printed DBML is the same: the printer writes each detail as a line of the table’s note, as before. `table.note` now holds only the table’s own note (its comment).",
+					"kind": "breaking",
+					"migration": {
+						"instruction": "Read `table.details` for a table’s triggers, rules, partitions, policies and view query; for the whole note as printed, call `tableNoteOf(table)` instead of reading `table.note`.",
+						"manual": true
+					},
+					"summary": "A table’s triggers, rules, partitions, policies and view query are data",
+					"symbols": [
+						"DbmlTable",
+						"DbmlTableDetail",
+						"detailLine",
+						"detailWhen",
+						"tableNoteOf"
+					]
+				}
+			],
+			"date": "2026-11-19",
+			"version": "0.4.0"
+		},
+		{
+			"changes": [
+				{
 					"detail": "A Drizzle 1.0 relation with a `where` filter says its filter in the reference’s note, and a many declared with its own from and to becomes a link from the key to the one side, as a foreign key would be.",
 					"kind": "added",
 					"summary": "Drizzle: filtered relations, and many relations with their own keys"

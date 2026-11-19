@@ -1,20 +1,21 @@
-import type {
-	DbmlCheck,
-	DbmlColumn,
-	DbmlDefault,
-	DbmlDep,
-	DbmlEndpoint,
-	DbmlEnum,
-	DbmlIndex,
-	DbmlIndexPart,
-	DbmlMetadata,
-	DbmlModel,
-	DbmlRecords,
-	DbmlRecordValue,
-	DbmlRef,
-	DbmlStickyNote,
-	DbmlTable,
-	DbmlTableGroup
+import {
+	type DbmlCheck,
+	type DbmlColumn,
+	type DbmlDefault,
+	type DbmlDep,
+	type DbmlEndpoint,
+	type DbmlEnum,
+	type DbmlIndex,
+	type DbmlIndexPart,
+	type DbmlMetadata,
+	type DbmlModel,
+	type DbmlRecords,
+	type DbmlRecordValue,
+	type DbmlRef,
+	type DbmlStickyNote,
+	type DbmlTable,
+	type DbmlTableGroup,
+	tableNoteOf
 } from './model';
 
 /*
@@ -140,8 +141,8 @@ const printTable = (table: DbmlTable) => {
 		sections.push(block('Checks', table.checks.map(printCheck), 2));
 	if (table.indexes.length > 0)
 		sections.push(block('Indexes', table.indexes.map(printIndex), 2));
-	if (table.note !== undefined)
-		sections.push(`${INDENT}Note: ${quoteText(table.note)}`);
+	const note = tableNoteOf(table);
+	if (note !== undefined) sections.push(`${INDENT}Note: ${quoteText(note)}`);
 	const lines = body.map((line) => `${INDENT}${line}`);
 
 	return `${head} {\n${[lines.join('\n'), ...sections].join('\n\n')}\n}`;

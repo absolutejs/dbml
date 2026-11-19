@@ -5,7 +5,7 @@ import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { DbmlModel } from '../src/model';
 import { fromPostgres, type PostgresQuery } from '../src/postgres';
-import { roundTrip } from './roundTrip';
+import { printedNote, roundTrip } from './roundTrip';
 
 /* Everything a Postgres database holds beyond tables, keys and indexes,
  * built for real (extensions included) so each is read from the catalogs
@@ -138,16 +138,24 @@ describe('what a Postgres database holds beyond its tables', () => {
 	});
 
 	test('triggers, rules and inheritance on their tables', () => {
-		expect(table('people')?.note).toBe(
-			'Trigger people_stamp BEFORE INSERT OR UPDATE ON people FOR EACH ROW EXECUTE FUNCTION stamp()'
+		expect(printedNote(table('people'))).toBe(
+			'Trigger people_stamp: BEFORE INSERT OR UPDATE ON people FOR EACH ROW EXECUTE FUNCTION stamp()'
 		);
-		expect(table('audit_log')?.note).toBe(
-			'Rule audit_never_delete AS\n    ON DELETE TO audit_log DO INSTEAD NOTHING;'
+		expect(printedNote(table('audit_log'))).toBe(
+			'Rule audit_never_delete: ON DELETE TO audit_log DO INSTEAD NOTHING;'
 		);
 		expect(table('special_items')).toMatchObject({
-			metadata: { inherits: 'public.base_items' },
-			note: 'Inherits from public.base_items'
+			details: [{ kind: 'inherits', text: 'public.base_items' }],
+			metadata: { inherits: 'public.base_items' }
 		});
+		/* As data, for anything that draws them. */
+		expect(table('people')?.details).toEqual([
+			{
+				kind: 'trigger',
+				name: 'people_stamp',
+				text: 'BEFORE INSERT OR UPDATE ON people FOR EACH ROW EXECUTE FUNCTION stamp()'
+			}
+		]);
 	});
 
 	test('functions, domains, composite types, extensions and event triggers as sticky notes', () => {

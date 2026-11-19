@@ -1,11 +1,12 @@
 import { Parser } from '@dbml/core';
 import { expect } from 'bun:test';
-import type {
-	DbmlColumn,
-	DbmlModel,
-	DbmlRef,
-	DbmlRelation,
-	DbmlTable
+import {
+	type DbmlColumn,
+	type DbmlModel,
+	type DbmlRef,
+	type DbmlRelation,
+	type DbmlTable,
+	tableNoteOf
 } from '../src/model';
 import { printDbml } from '../src/print';
 
@@ -165,7 +166,7 @@ const checkTable = (table: DbmlTable, checking: Checking) => {
 		.tables.find((entry) => entry.name === table.name);
 	expect(read, `table ${table.name}`).toBeDefined();
 	if (!read) return;
-	expect(absent(read.note), `${table.name} note`).toBe(table.note);
+	expect(absent(read.note), `${table.name} note`).toBe(tableNoteOf(table));
 	expect(read.fields.map((field) => field.name)).toEqual(
 		table.columns.map((column) => column.name)
 	);
@@ -294,3 +295,7 @@ export const roundTrip = (model: DbmlModel) => {
 
 	return text;
 };
+
+/** A table's note as DBML prints it: its own note, then its details. */
+export const printedNote = (table: DbmlTable | undefined) =>
+	table ? tableNoteOf(table) : undefined;

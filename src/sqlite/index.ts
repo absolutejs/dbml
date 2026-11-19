@@ -8,6 +8,8 @@ import {
 	type DbmlRef,
 	type DbmlReferentialAction,
 	type DbmlTable,
+	type DbmlTableDetail,
+	detailWhen,
 	emptyModel,
 	isUniqueSet
 } from '../model';
@@ -356,15 +358,29 @@ const tableOf = async (read: Reader, entry: Raw, context: TableContext) => {
 		...(rows === undefined ? {} : { rows })
 	};
 	const own = context.triggers.filter((row) => row.tbl_name === name);
-	const noteLines = [
-		view
-			? `View:\n${sql.replace(/^CREATE\s+(TEMP\s+|TEMPORARY\s+)?VIEW\s+\S+\s+AS\s+/iu, '')}`
-			: undefined,
-		...own.map(
-			(row) =>
-				`Trigger ${(text(row.sql) ?? '').replace(/^CREATE\s+(TEMP\s+|TEMPORARY\s+)?TRIGGER\s+(IF NOT EXISTS\s+)?/iu, '')}`
-		)
-	].filter((line) => line !== undefined);
+	const details: DbmlTableDetail[] = [
+		...detailWhen(view, {
+			kind: 'view',
+			text: sql.replace(
+				/^CREATE\s+(TEMP\s+|TEMPORARY\s+)?VIEW\s+\S+\s+AS\s+/iu,
+				''
+			)
+		}),
+		...own.map((row) => {
+			const body = (text(row.sql) ?? '').replace(
+				/^CREATE\s+(TEMP\s+|TEMPORARY\s+)?TRIGGER\s+(IF NOT EXISTS\s+)?/iu,
+				''
+			);
+			const written = leadingName(body);
+			const detail: DbmlTableDetail = {
+				kind: 'trigger',
+				name: unquote(written),
+				text: body.slice(written.length).replace(/\s+/gu, ' ').trim()
+			};
+
+			return detail;
+		})
+	];
 	const table: DbmlTable = {
 		checks: view ? [] : checksIn(definitions.body),
 		columns: info.map((column) =>
@@ -378,7 +394,7 @@ const tableOf = async (read: Reader, entry: Raw, context: TableContext) => {
 		indexes: [],
 		...(Object.keys(metadata).length > 0 ? { metadata } : {}),
 		name,
-		...(noteLines.length > 0 ? { note: noteLines.join('\n') } : {})
+		...(details.length > 0 ? { details } : {})
 	};
 	if (keyed.length === 1 && !rowidKey)
 		table.columns.forEach((column) => {

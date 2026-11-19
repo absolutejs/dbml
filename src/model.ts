@@ -76,14 +76,44 @@ export type DbmlIndex = {
 
 export type DbmlCheck = { expression: string; name?: string };
 
+/**
+ * What a table is and does beyond its columns, as data: what kind of
+ * relation it is (with a view's query), how it's partitioned and into
+ * what, what it inherits from, its triggers and rules, and row-level
+ * security with its policies. DBML has no syntax for these, so the printer
+ * writes each as a line of the table's note (see `detailLine`); a diagram
+ * can read them here instead of parsing the note.
+ */
+export type DbmlTableDetail =
+	| { kind: 'foreign_table' | 'partitioned_table' }
+	| {
+			/* Already in the database, its query not known here. */
+			existing?: boolean;
+			kind: 'materialized_view' | 'view';
+			/* Its query. */
+			text?: string;
+	  }
+	| { kind: 'inherits' | 'partitioned_by'; text: string }
+	| { kind: 'partition'; name: string; text?: string }
+	| {
+			disabled?: boolean;
+			kind: 'rule' | 'trigger';
+			name: string;
+			text: string;
+	  }
+	| { kind: 'policy'; name: string; text: string }
+	| { forced?: boolean; kind: 'row_security' };
+
 export type DbmlTable = {
 	alias?: string;
 	checks: DbmlCheck[];
 	columns: DbmlColumn[];
+	details?: DbmlTableDetail[];
 	headerColor?: DbmlColor;
 	indexes: DbmlIndex[];
 	metadata?: DbmlMetadata;
 	name: string;
+	/** The table's own note (its comment); its details print after it. */
 	note?: string;
 	schema?: string;
 };
@@ -277,3 +307,55 @@ export const isUniqueSet = (table: DbmlTable, columns: string[]) => {
 			sortedColumns(index) === wanted
 	);
 };
+
+const VIEW_LABEL: Record<'materialized_view' | 'view', string> = {
+	materialized_view: 'Materialized view',
+	view: 'View'
+};
+
+/** A table detail as the line of its note DBML carries it in. */
+export const detailLine = (detail: DbmlTableDetail) => {
+	switch (detail.kind) {
+		case 'foreign_table':
+			return 'Foreign table';
+		case 'partitioned_table':
+			return 'Partitioned table';
+		case 'materialized_view':
+		case 'view': {
+			const label = VIEW_LABEL[detail.kind];
+			if (detail.existing)
+				return `${label} that already exists in the database; its query lives there`;
+
+			return detail.text ? `${label}:\n${detail.text}` : label;
+		}
+		case 'inherits':
+			return `Inherits from ${detail.text}`;
+		case 'partitioned_by':
+			return `Partitioned by ${detail.text}`;
+		case 'partition':
+			return `Partition ${detail.name}${detail.text ? `: ${detail.text}` : ''}`;
+		case 'rule':
+		case 'trigger':
+			return `${detail.kind === 'rule' ? 'Rule' : 'Trigger'} ${detail.name}: ${detail.text}${detail.disabled ? ' (disabled)' : ''}`;
+		case 'policy':
+			return `Policy ${detail.name} ${detail.text}`;
+		case 'row_security':
+			return `Row-level security is on${detail.forced ? ', for the owner too' : ''}`;
+		default:
+			return '';
+	}
+};
+
+/** The note a table prints with: its own note, then a line per detail. */
+export const tableNoteOf = (table: Pick<DbmlTable, 'details' | 'note'>) => {
+	const lines = [table.note, ...(table.details ?? []).map(detailLine)].filter(
+		(line): line is string => line !== undefined && line !== ''
+	);
+
+	return lines.length > 0 ? lines.join('\n') : undefined;
+};
+
+/** A detail when its condition holds, none otherwise: for building a
+ *  table's details in order. */
+export const detailWhen = (condition: unknown, detail: DbmlTableDetail) =>
+	condition ? [detail] : [];

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { sql } from 'drizzle-orm';
 import * as pg from 'drizzle-orm/pg-core';
 import { fromDrizzle } from '../src/drizzle';
-import { roundTrip } from './roundTrip';
+import { printedNote, roundTrip } from './roundTrip';
 
 const mood = pg.pgEnum('mood', ['happy', 'sad']);
 const auth = pg.pgSchema('auth');
@@ -233,7 +233,7 @@ describe('Postgres', () => {
 		expect(column('users', 'data')?.note).toBe(
 			'The app sets it when a row is inserted\nThe app sets it whenever the row is updated'
 		);
-		expect(table('users')?.note).toBe(
+		expect(printedNote(table('users'))).toBe(
 			'Row-level security is on\nPolicy own for select to authenticated using ("id" = 1)\nPolicy admins restrictive for all with check (true)'
 		);
 	});

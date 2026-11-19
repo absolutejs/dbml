@@ -1,10 +1,12 @@
-import type {
-	DbmlColumn,
-	DbmlDefault,
-	DbmlEnum,
-	DbmlIndex,
-	DbmlIndexPart,
-	DbmlTable
+import {
+	type DbmlColumn,
+	type DbmlDefault,
+	type DbmlEnum,
+	type DbmlIndex,
+	type DbmlIndexPart,
+	type DbmlTable,
+	type DbmlTableDetail,
+	detailWhen
 } from '../model';
 import {
 	type DrizzleColumn,
@@ -287,27 +289,33 @@ const roleText = (roles: unknown) =>
 		.map(roleName)
 		.join(', ');
 
-const policyLine = (policy: PolicyConfig) =>
-	present([
-		`Policy ${policy.name}`,
-		policy.as && policy.as !== 'permissive' ? policy.as : undefined,
-		`for ${policy.for ?? 'all'}`,
-		policy.to === undefined ? undefined : `to ${roleText(policy.to)}`,
-		policy.using ? `using (${sqlText(policy.using)})` : undefined,
-		policy.withCheck
-			? `with check (${sqlText(policy.withCheck)})`
-			: undefined
-	]).join(' ');
+const policyDetail = (policy: PolicyConfig) => {
+	const detail: DbmlTableDetail = {
+		kind: 'policy',
+		name: policy.name,
+		text: present([
+			policy.as && policy.as !== 'permissive' ? policy.as : undefined,
+			`for ${policy.for ?? 'all'}`,
+			policy.to === undefined ? undefined : `to ${roleText(policy.to)}`,
+			policy.using ? `using (${sqlText(policy.using)})` : undefined,
+			policy.withCheck
+				? `with check (${sqlText(policy.withCheck)})`
+				: undefined
+		]).join(' ')
+	};
 
-const tableNote = (config: TableConfig) => {
+	return detail;
+};
+
+const tableDetails = (config: TableConfig) => {
 	const policies = config.policies ?? [];
 	const secured = config.enableRLS === true || policies.length > 0;
-	const lines = present([
-		secured ? 'Row-level security is on' : undefined,
-		...policies.map(policyLine)
-	]);
+	const details: DbmlTableDetail[] = [
+		...detailWhen(secured, { kind: 'row_security' }),
+		...policies.map(policyDetail)
+	];
 
-	return lines.length > 0 ? lines.join('\n') : undefined;
+	return details.length > 0 ? { details } : {};
 };
 
 const columnParts = (columns: readonly DrizzleColumn[]) =>
@@ -343,7 +351,6 @@ const keyIndexes = (config: TableConfig) => [
 /** One table, and the enums its columns use. */
 export const tableOf = (config: TableConfig) => {
 	const columns = config.columns.map((column) => columnOf(column, config));
-	const note = tableNote(config);
 	const table: DbmlTable = {
 		checks: config.checks.map((check) => ({
 			expression: sqlText(check.value),
@@ -356,7 +363,7 @@ export const tableOf = (config: TableConfig) => {
 		],
 		name: config.name,
 		...inSchema(config.schema),
-		...(note ? { note } : {})
+		...tableDetails(config)
 	};
 
 	return {
