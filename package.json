@@ -1,0 +1,90 @@
+{
+	"author": "Alex Kahn",
+	"bin": {
+		"absolute-dbml": "./dist/cli.js"
+	},
+	"bugs": {
+		"url": "https://github.com/absolutejs/dbml/issues"
+	},
+	"description": "Turn any Drizzle schema, or a live Postgres database, into DBML: tables, enums, keys, indexes, checks, relations and notes, with one model behind both.",
+	"devDependencies": {
+		"@absolutejs/changelog": "^0.6.0",
+		"@dbml/core": "12.1.0",
+		"@electric-sql/pglite": "0.5.15",
+		"@stylistic/eslint-plugin-ts": "4.2.0",
+		"@types/bun": "latest",
+		"drizzle-orm": "1.0.0-rc.4",
+		"eslint": "9.26.0",
+		"eslint-plugin-absolute": "0.0.3",
+		"eslint-plugin-import": "2.31.0",
+		"eslint-plugin-promise": "7.2.1",
+		"eslint-plugin-security": "3.0.1",
+		"prettier": "3.5.3",
+		"typescript": "5.9.3",
+		"typescript-eslint": "8.32.0"
+	},
+	"exports": {
+		".": {
+			"default": "./dist/index.js",
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		},
+		"./drizzle": {
+			"default": "./dist/drizzle/index.js",
+			"import": "./dist/drizzle/index.js",
+			"types": "./dist/drizzle/index.d.ts"
+		},
+		"./postgres": {
+			"default": "./dist/postgres/index.js",
+			"import": "./dist/postgres/index.js",
+			"types": "./dist/postgres/index.d.ts"
+		}
+	},
+	"files": [
+		"CHANGELOG.md",
+		"LICENSE",
+		"README.md",
+		"changelog.json",
+		"dist"
+	],
+	"homepage": "https://github.com/absolutejs/dbml",
+	"keywords": [
+		"dbml",
+		"drizzle",
+		"drizzle-orm",
+		"postgres",
+		"schema",
+		"erd",
+		"diagram"
+	],
+	"license": "MIT",
+	"main": "./dist/index.js",
+	"name": "@absolutejs/dbml",
+	"peerDependencies": {
+		"drizzle-orm": ">=1.0.0-rc.4 <2"
+	},
+	"peerDependenciesMeta": {
+		"drizzle-orm": {
+			"optional": true
+		}
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/absolutejs/dbml.git"
+	},
+	"scripts": {
+		"build": "rm -rf dist && bun build src/index.ts src/drizzle/index.ts src/postgres/index.ts src/cli.ts --outdir dist --root ./src --target=bun --external drizzle-orm && tsc --emitDeclarationOnly --project tsconfig.build.json",
+		"check:package": "bun run typecheck && bun run lint && bun run build && bun run test && absolute-changelog check",
+		"format": "prettier --write \"./**/*.{ts,json,mjs,md}\"",
+		"lint": "eslint ./",
+		"prepublishOnly": "bun run check:package",
+		"test": "bun test",
+		"typecheck": "tsc --noEmit"
+	},
+	"type": "module",
+	"types": "./dist/index.d.ts",
+	"version": "0.1.0"
+}
