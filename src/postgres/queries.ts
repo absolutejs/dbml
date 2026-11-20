@@ -34,8 +34,18 @@ select c.oid::int as id, n.nspname as schema, c.relname as name, c.relkind as ki
 	pg_get_userbyid(c.relowner) as owner,
 	c.relpersistence as persistence,
 	array_to_string(c.reloptions, ', ') as options,
-	case when c.reltuples >= 0 then c.reltuples::bigint::text end as row_estimate,
-	case when c.relkind in ('r', 'p', 'm') then pg_total_relation_size(c.oid)::text end as size_bytes,
+	/* A partitioned table holds nothing itself: its rows and size are its
+	 * partitions', every level down. */
+	case
+		when c.relkind = 'p' then (select sum(greatest(l.reltuples, 0))::bigint::text
+			from pg_partition_tree(c.oid) t join pg_class l on l.oid = t.relid where t.isleaf)
+		when c.reltuples >= 0 then c.reltuples::bigint::text
+	end as row_estimate,
+	case
+		when c.relkind = 'p' then (select coalesce(sum(pg_total_relation_size(t.relid)), 0)::text
+			from pg_partition_tree(c.oid) t where t.isleaf)
+		when c.relkind in ('r', 'm') then pg_total_relation_size(c.oid)::text
+	end as size_bytes,
 	(select string_agg(g.privilege_type || ' to ' || case when g.grantee = 0 then 'public' else pg_get_userbyid(g.grantee) end, ', ' order by g.grantee, g.privilege_type)
 		from aclexplode(c.relacl) as g where g.grantee <> c.relowner) as grants,
 	(select s.srvname from pg_foreign_table ft join pg_foreign_server s on s.oid = ft.ftserver where ft.ftrelid = c.oid) as foreign_server,

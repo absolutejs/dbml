@@ -359,3 +359,160 @@ export const tableNoteOf = (table: Pick<DbmlTable, 'details' | 'note'>) => {
  *  table's details in order. */
 export const detailWhen = (condition: unknown, detail: DbmlTableDetail) =>
 	condition ? [detail] : [];
+
+const PREFIX_GROUP_MIN = 3;
+
+/* The part of a name before its first separator: `commerce` for
+ * `commerce_orders`, `billing` for `billingInvoices`. */
+const prefixOf = (name: string) => {
+	const snake = /^([a-z0-9]+)[_-]/iu.exec(name)?.[1];
+	if (snake) return snake.toLowerCase();
+
+	return /^([a-z0-9]+)(?=[A-Z])/u.exec(name)?.[1];
+};
+
+/** Table groups for tables that share a name prefix, the way an app names
+ *  its modules (`commerce_orders`, `commerce_carts`, ...). A prefix needs
+ *  `minimum` tables (three by default) to make a group; a table whose
+ *  whole name is a group's prefix joins it. Within a schema only. */
+export const groupByPrefix = (
+	tables: DbmlTable[],
+	minimum = PREFIX_GROUP_MIN
+) => {
+	const byPrefix = new Map<string, DbmlTable[]>();
+	tables.forEach((table) => {
+		const prefix = prefixOf(table.name);
+		if (!prefix) return;
+		const key = `${table.schema ?? ''}.${prefix}`;
+		byPrefix.set(key, [...(byPrefix.get(key) ?? []), table]);
+	});
+	tables.forEach((table) => {
+		const key = `${table.schema ?? ''}.${table.name.toLowerCase()}`;
+		const members = byPrefix.get(key);
+		if (members && !members.includes(table)) members.unshift(table);
+	});
+
+	return [...byPrefix]
+		.filter(([, members]) => members.length >= minimum)
+		.map(([key, members]) => {
+			const group: DbmlTableGroup = {
+				name: key.slice(key.indexOf('.') + 1),
+				tables: members.map((table) => ({
+					...(table.schema ? { schema: table.schema } : {}),
+					table: table.name
+				}))
+			};
+
+			return group;
+		});
+};
+
+/** A link an app declares, in database names (see
+ *  `appRelationsFromSource`). */
+export type DbmlAppLink = {
+	field: string;
+	/** Declared as a foreign key (`.references()`), not only a relation. */
+	foreignKey?: boolean;
+	from: DbmlEndpoint;
+	to: DbmlEndpoint;
+	where?: string;
+};
+
+/* The model's table an app's endpoint names: by name, then by schema when
+ * two schemas share it. */
+const tableFor = (tables: DbmlTable[], end: DbmlEndpoint) => {
+	const named = tables.filter((table) => table.name === end.table);
+	if (named.length <= 1) return named[0];
+
+	return named.find(
+		(table) => (table.schema ?? 'public') === (end.schema ?? 'public')
+	);
+};
+
+const endKey = (end: DbmlEndpoint) =>
+	`${end.schema ?? ''}.${end.table}(${end.columns.join(',')})`;
+
+/** The live model with the links its app declares: a link a foreign key
+ *  already makes gains how the app reads it; one no foreign key enforces
+ *  is added as an inactive ref, drawn dashed. A link to a table or column
+ *  the database doesn't have (code ahead of or behind it) is left out. */
+export const withAppRelations = (model: DbmlModel, links: DbmlAppLink[]) => {
+	const refs = model.refs.map((ref) => ({ ...ref }));
+	const byKey = new Map<
+		string,
+		{ fields: string[]; link: DbmlAppLink; ref?: DbmlRef }
+	>();
+	links.forEach((link) => {
+		const holder = tableFor(model.tables, link.from);
+		const target = tableFor(model.tables, link.to);
+		const has = (table: DbmlTable | undefined, columns: string[]) =>
+			table !== undefined &&
+			columns.every((column) =>
+				table.columns.some((entry) => entry.name === column)
+			);
+		if (
+			!holder ||
+			!target ||
+			!has(holder, link.from.columns) ||
+			!has(target, link.to.columns)
+		)
+			return;
+		const from: DbmlEndpoint = {
+			columns: link.from.columns,
+			...(holder.schema ? { schema: holder.schema } : {}),
+			table: holder.name
+		};
+		const into: DbmlEndpoint = {
+			columns: link.to.columns,
+			...(target.schema ? { schema: target.schema } : {}),
+			table: target.name
+		};
+		const key = `${endKey(from)}>${endKey(into)}`;
+		const field = link.where
+			? `${link.field} where ${link.where}`
+			: link.field;
+		const known = byKey.get(key);
+		if (known) {
+			if (!known.fields.includes(field)) known.fields.push(field);
+			if (link.foreignKey) known.link.foreignKey = true;
+
+			return;
+		}
+		const ref = refs.find(
+			(entry) =>
+				(endKey(entry.from) === endKey(from) &&
+					endKey(entry.to) === endKey(into)) ||
+				(endKey(entry.from) === endKey(into) &&
+					endKey(entry.to) === endKey(from))
+		);
+		byKey.set(key, {
+			fields: [field],
+			link: { ...link, from, to: into },
+			...(ref ? { ref } : {})
+		});
+	});
+	byKey.forEach(({ fields, link, ref }) => {
+		const reading = `Read in the app as ${fields.join(', ')}`;
+		if (ref) {
+			ref.note = ref.note ? `${ref.note}\n${reading}` : reading;
+
+			return;
+		}
+		const holder = tableFor(model.tables, link.from);
+		refs.push({
+			from: link.from,
+			inactive: true,
+			/* A key the code declares and the database lacks means its
+			 * migrations are behind; say so rather than call it a relation. */
+			note: link.foreignKey
+				? `The app declares this foreign key (${fields.join(', ')}); the database doesn't have it`
+				: `Not a foreign key: the app's relation ${fields.join(', ')}`,
+			relation:
+				holder && isUniqueSet(holder, link.from.columns) ? '-' : '>',
+			to: link.to
+		});
+	});
+	const result: DbmlModel = { ...model, refs };
+
+	return result;
+};

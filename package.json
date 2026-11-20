@@ -29,10 +29,20 @@
 			"import": "./dist/index.js",
 			"types": "./dist/index.d.ts"
 		},
+		"./dbml": {
+			"default": "./dist/dbml/index.js",
+			"import": "./dist/dbml/index.js",
+			"types": "./dist/dbml/index.d.ts"
+		},
 		"./drizzle": {
 			"default": "./dist/drizzle/index.js",
 			"import": "./dist/drizzle/index.js",
 			"types": "./dist/drizzle/index.d.ts"
+		},
+		"./drizzle-source": {
+			"default": "./dist/drizzle-source/index.js",
+			"import": "./dist/drizzle-source/index.js",
+			"types": "./dist/drizzle-source/index.d.ts"
 		},
 		"./mysql": {
 			"default": "./dist/mysql/index.js",
@@ -74,10 +84,18 @@
 	"main": "./dist/index.js",
 	"name": "@absolutejs/dbml",
 	"peerDependencies": {
-		"drizzle-orm": ">=1.0.0-rc.4 <2"
+		"@dbml/core": ">=12 <13",
+		"drizzle-orm": ">=1.0.0-rc.4 <2",
+		"typescript": ">=5 <7"
 	},
 	"peerDependenciesMeta": {
+		"@dbml/core": {
+			"optional": true
+		},
 		"drizzle-orm": {
+			"optional": true
+		},
+		"typescript": {
 			"optional": true
 		}
 	},
@@ -89,7 +107,7 @@
 		"url": "https://github.com/absolutejs/dbml.git"
 	},
 	"scripts": {
-		"build": "rm -rf dist && bun build src/index.ts src/drizzle/index.ts src/postgres/index.ts src/mysql/index.ts src/sqlite/index.ts src/cli.ts --outdir dist --root ./src --target=bun --external drizzle-orm && tsc --emitDeclarationOnly --project tsconfig.build.json",
+		"build": "rm -rf dist && bun build src/index.ts src/drizzle/index.ts src/postgres/index.ts src/mysql/index.ts src/sqlite/index.ts src/dbml/index.ts src/drizzle-source/index.ts src/cli.ts --outdir dist --root ./src --target=bun --external drizzle-orm --external @dbml/core --external typescript && tsc --emitDeclarationOnly --project tsconfig.build.json",
 		"check:package": "bun run typecheck && bun run lint && bun run build && bun run test && absolute-changelog check",
 		"format": "prettier --write \"./**/*.{ts,json,mjs,md}\"",
 		"lint": "eslint ./",
@@ -99,5 +117,5 @@
 	},
 	"type": "module",
 	"types": "./dist/index.d.ts",
-	"version": "0.4.0"
+	"version": "0.5.0"
 }

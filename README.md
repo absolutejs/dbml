@@ -99,6 +99,29 @@ Anything DBML has no syntax for is said in a note rather than dropped. Every
 construct is tested by printing it and reading it back with the official DBML
 parser.
 
+## Comparing, merging and reading DBML
+
+```ts
+import { diffModels, withAppRelations } from '@absolutejs/dbml';
+import { fromDbml } from '@absolutejs/dbml/dbml';
+import { appRelationsFromSource } from '@absolutejs/dbml/drizzle-source';
+
+// What changed between two schemas: staging and production, or before and after a migration.
+const changes = diffModels(fromDbml(yesterday), await fromPostgres(query));
+
+// The links an app's Drizzle source declares, read as text and never run,
+// added to a live database's: dashed where no foreign key enforces them.
+const model = withAppRelations(live, appRelationsFromSource(files));
+```
+
+```sh
+bunx @absolutejs/dbml --postgres "$DATABASE_URL" --app ./src --diff schema.dbml
+```
+
+`groupByPrefix` groups tables that share a name prefix, the way apps name
+their modules. `fromDbml` needs `@dbml/core` and `appRelationsFromSource`
+needs `typescript`; both are optional peers.
+
 ## The model
 
 Every reader returns a `DbmlModel`: plain data

@@ -1,12 +1,16 @@
 #!/usr/bin/env bun
-import { writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { SQL } from 'bun';
 import { Database } from 'bun:sqlite';
+import { fromDbml } from './dbml';
+import { diffModels } from './diff';
 import { fromDrizzle, type FromDrizzleOptions } from './drizzle';
+import { appRelationsFromSource, isSchemaSource } from './drizzle-source';
+import { type DbmlModel, withAppRelations } from './model';
 import { fromMysql, type FromMysqlOptions } from './mysql';
 import { fromPostgres } from './postgres';
 import { printDbml } from './print';
@@ -25,6 +29,7 @@ export const USAGE = `Usage:
   absolute-dbml --postgres <url> [options]     a live Postgres database
   absolute-dbml --mysql <url> [options]        a live MySQL or MariaDB database
   absolute-dbml --sqlite <file> [options]      a SQLite database file
+  absolute-dbml --dbml <file> [options]        a DBML file
 
 Options:
   -o, --output <file>     write to a file instead of standard output
@@ -35,6 +40,9 @@ Options:
       --schema <name>     a schema (or MySQL database) to read (repeatable)
       --records <n>       each table's first n rows as Records (Postgres only)
       --statistics        each table's row count and size, as metadata
+      --app <dir>         add the relations an app's Drizzle source declares
+                          (read as text, never run) to a live database's links
+      --diff <file.dbml>  print what changed from that DBML to this schema
   -h, --help              show this help
 `;
 
@@ -46,6 +54,9 @@ const fail = (message: string) => {
 const { positionals, values } = parseArgs({
 	allowPositionals: true,
 	options: {
+		app: { type: 'string' },
+		dbml: { type: 'string' },
+		diff: { type: 'string' },
 		groups: { type: 'string' },
 		help: { short: 'h', type: 'boolean' },
 		json: { type: 'boolean' },
@@ -176,17 +187,64 @@ const readModel = () => {
 	if (values.postgres) return readDatabase(values.postgres);
 	if (values.mysql) return readMysql(values.mysql);
 	if (values.sqlite) return readSqlite(values.sqlite);
+	if (values.dbml)
+		return fromDbml(readFileSync(resolve(values.dbml), 'utf8'));
 	if (source) return readSchema(source);
 
 	return fail(
-		'Give a schema file, --postgres <url>, --mysql <url> or --sqlite <file>.'
+		'Give a schema file, --postgres <url>, --mysql <url>, --sqlite <file> or --dbml <file>.'
 	);
 };
 
-const model = await readModel();
+const SKIPPED = new Set(['.git', 'build', 'dist', 'node_modules']);
+const MAX_SOURCE_BYTES = 512 * 1024;
+
+/* Every TypeScript file under a directory that imports Drizzle. */
+type Source = { path: string; text: string };
+
+const schemaSources: (directory: string) => Source[] = (directory) =>
+	readdirSync(directory).flatMap((name) => {
+		const path = join(directory, name);
+		if (SKIPPED.has(name) || name.startsWith('.')) return [];
+		const stats = statSync(path);
+		if (stats.isDirectory()) return schemaSources(path);
+		if (stats.size > MAX_SOURCE_BYTES) return [];
+		const text = readFileSync(path, 'utf8');
+
+		return isSchemaSource(path, text) ? [{ path, text }] : [];
+	});
+
+const withApp = (read: DbmlModel) =>
+	values.app
+		? withAppRelations(
+				read,
+				appRelationsFromSource(schemaSources(resolve(values.app)))
+			)
+		: read;
+
+const model = withApp(await readModel());
+if (values.diff) {
+	const changes = diffModels(
+		fromDbml(readFileSync(resolve(values.diff), 'utf8')),
+		model
+	);
+	process.stdout.write(
+		changes.length === 0
+			? 'No changes.\n'
+			: `${changes
+					.map(
+						(change) =>
+							`${change.kind} ${change.object} ${change.table ? `${change.table}.` : ''}${change.name}${change.before && change.after ? `: ${change.before} → ${change.after}` : ''}`
+					)
+					.join('\n')}\n`
+	);
+	process.exit(0);
+}
 const output = values.json
 	? `${JSON.stringify(model, null, '\t')}\n`
 	: printDbml(model);
 
 if (values.output) writeFileSync(resolve(values.output), output);
 else process.stdout.write(output);
+/* The DBML parser leaves handles open; the work is done. */
+process.exit(0);

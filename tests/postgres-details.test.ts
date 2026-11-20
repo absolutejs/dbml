@@ -45,6 +45,11 @@ create rule audit_never_delete as on delete to audit_log do instead nothing;
 create table base_items (id integer primary key, label text);
 create table special_items (extra text) inherits (base_items);
 create unlogged table scratch (id integer);
+create table readings (id integer, at date not null) partition by range (at);
+create table readings_2026 partition of readings for values from ('2026-01-01') to ('2027-01-01') partition by range (at);
+create table readings_2026_h1 partition of readings_2026 for values from ('2026-01-01') to ('2026-07-01');
+create table readings_2027 partition of readings for values from ('2027-01-01') to ('2028-01-01');
+insert into readings select g, date '2026-02-01' + (g % 500) from generate_series(1, 300) g where date '2026-02-01' + (g % 500) < date '2026-07-01' or date '2026-02-01' + (g % 500) >= date '2027-01-01';
 
 create server files foreign data wrapper file_fdw;
 create foreign table imported (line text) server files options (filename '/dev/null', format 'text');
@@ -55,7 +60,7 @@ create function on_ddl() returns event_trigger language plpgsql as $$ begin end 
 create event trigger ddl_watch on ddl_command_end execute function on_ddl();
 
 insert into people (handle, name, score) values ('ann', 'Ann', 3), ('bo', 'Bo', null);
-analyze people;
+analyze;
 `;
 
 let database: PGlite;
@@ -189,6 +194,14 @@ describe('what a Postgres database holds beyond its tables', () => {
 				upstream: { columns: ['id', 'name'], table: 'people' }
 			}
 		]);
+	});
+
+	test('a partitioned table counts what its partitions hold, every level down', () => {
+		const readings = table('readings')?.metadata;
+		expect(readings?.rows).toBeGreaterThan(0);
+		expect(
+			typeof readings?.size_bytes === 'number' && readings.size_bytes > 0
+		).toBe(true);
 	});
 
 	test('statistics stay out unless asked for', async () => {
