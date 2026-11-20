@@ -361,51 +361,101 @@ export const detailWhen = (condition: unknown, detail: DbmlTableDetail) =>
 	condition ? [detail] : [];
 
 const PREFIX_GROUP_MIN = 3;
+/* A group holding more of the tables than this is split further. */
+const PREFIX_GROUP_SHARE = 0.4;
 
-/* The part of a name before its first separator: `commerce` for
- * `commerce_orders`, `billing` for `billingInvoices`. */
-const prefixOf = (name: string) => {
-	const snake = /^([a-z0-9]+)[_-]/iu.exec(name)?.[1];
-	if (snake) return snake.toLowerCase();
+/* A name's words: `commerce_inventory_levels` and
+ * `commerceInventoryLevels` are both commerce, inventory, levels. */
+const wordsOf = (name: string) =>
+	name
+		.replace(/([a-z0-9])([A-Z])/gu, '$1_$2')
+		.toLowerCase()
+		.split(/[_-]+/u)
+		.filter((word) => word !== '');
 
-	return /^([a-z0-9]+)(?=[A-Z])/u.exec(name)?.[1];
+/* The first `depth` words of a name, when it has more than that. */
+const prefixAt = (name: string, depth: number) => {
+	const words = wordsOf(name);
+
+	return words.length > depth ? words.slice(0, depth).join('_') : undefined;
 };
 
-/** Table groups for tables that share a name prefix, the way an app names
- *  its modules (`commerce_orders`, `commerce_carts`, ...). A prefix needs
- *  `minimum` tables (three by default) to make a group; a table whose
- *  whole name is a group's prefix joins it. Within a schema only. */
-export const groupByPrefix = (
+type Grouping = { minimum: number; share: number; total: number };
+
+const groupOf = (name: string, members: DbmlTable[]) => {
+	const group: DbmlTableGroup = {
+		name,
+		tables: members.map((table) => ({
+			...(table.schema ? { schema: table.schema } : {}),
+			table: table.name
+		}))
+	};
+
+	return group;
+};
+
+/* Groups the tables by their first `depth` words; a group too big to
+ * help (more than `share` of every table) is split by the next word, and
+ * what fits no smaller group stays in it. */
+const groupsAt: (
 	tables: DbmlTable[],
-	minimum = PREFIX_GROUP_MIN
-) => {
+	depth: number,
+	grouping: Grouping
+) => DbmlTableGroup[] = (tables, depth, grouping) => {
 	const byPrefix = new Map<string, DbmlTable[]>();
 	tables.forEach((table) => {
-		const prefix = prefixOf(table.name);
+		const prefix = prefixAt(table.name, depth);
 		if (!prefix) return;
 		const key = `${table.schema ?? ''}.${prefix}`;
 		byPrefix.set(key, [...(byPrefix.get(key) ?? []), table]);
 	});
+	/* A table named just the prefix (`commerce`) belongs with it. */
 	tables.forEach((table) => {
-		const key = `${table.schema ?? ''}.${table.name.toLowerCase()}`;
+		const key = `${table.schema ?? ''}.${wordsOf(table.name).join('_')}`;
 		const members = byPrefix.get(key);
 		if (members && !members.includes(table)) members.unshift(table);
 	});
 
 	return [...byPrefix]
-		.filter(([, members]) => members.length >= minimum)
-		.map(([key, members]) => {
-			const group: DbmlTableGroup = {
-				name: key.slice(key.indexOf('.') + 1),
-				tables: members.map((table) => ({
-					...(table.schema ? { schema: table.schema } : {}),
-					table: table.name
-				}))
-			};
+		.filter(([, members]) => members.length >= grouping.minimum)
+		.flatMap(([key, members]) => {
+			const name = key.slice(key.indexOf('.') + 1);
+			const tooBig =
+				members.length > grouping.total * grouping.share &&
+				members.length >= grouping.minimum * 2;
+			if (!tooBig) return [groupOf(name, members)];
+			const smaller = groupsAt(members, depth + 1, grouping);
+			if (smaller.length === 0) return [groupOf(name, members)];
+			const placed = new Set(
+				smaller.flatMap((group) =>
+					group.tables.map((member) => member.table)
+				)
+			);
+			const rest = members.filter((table) => !placed.has(table.name));
 
-			return group;
+			return [
+				...smaller,
+				...(rest.length > 0 ? [groupOf(name, rest)] : [])
+			];
 		});
 };
+
+/** Table groups for tables that share a name prefix, the way an app names
+ *  its modules (`commerce_orders`, `commerce_carts`, ...). A prefix needs
+ *  `minimum` tables (three by default) to make a group; a table whose
+ *  whole name is a group's prefix joins it. A group holding more than 40%
+ *  of the tables is split by the next word (`commerce_inventory`,
+ *  `commerce_purchase`), what fits no smaller group staying in it. Within a
+ *  schema only. */
+export const groupByPrefix = (
+	tables: DbmlTable[],
+	minimum = PREFIX_GROUP_MIN
+) =>
+	groupsAt(tables, 1, {
+		minimum,
+		share: PREFIX_GROUP_SHARE,
+		total: tables.length
+	});
 
 /** A link an app declares, in database names (see
  *  `appRelationsFromSource`). */
