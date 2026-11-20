@@ -6,10 +6,13 @@ import { emptyModel, withAppRelations, type DbmlModel } from '../src/model';
 import { roundTrip } from './roundTrip';
 
 const FIXTURES = join(import.meta.dir, 'fixtures', 'app-schema');
-const files = readdirSync(FIXTURES).map((name) => ({
-	path: name,
-	text: readFileSync(join(FIXTURES, name), 'utf8')
-}));
+const files = readdirSync(FIXTURES)
+	/* In name order: a directory lists in whatever order its filesystem keeps. */
+	.sort()
+	.map((name) => ({
+		path: name,
+		text: readFileSync(join(FIXTURES, name), 'utf8')
+	}));
 const links = appRelationsFromSource(files);
 const brief = (link: (typeof links)[number]) =>
 	`${link.from.schema ? `${link.from.schema}.` : ''}${link.from.table}(${link.from.columns.join()}) > ${link.to.table}(${link.to.columns.join()}) as ${link.field}${link.where ? ` where ${link.where}` : ''}${link.foreignKey ? ' [fk]' : ''}`;

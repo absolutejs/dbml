@@ -5,6 +5,20 @@
 		{
 			"changes": [
 				{
+					"detail": "groupByPrefix splits a group holding more than 40% of the tables by its next word (`commerce_inventory`, `commerce_purchase`, ...), what fits no smaller group staying in it, so an app whose tables nearly all share one prefix still gets groups that help.",
+					"kind": "changed",
+					"summary": "A prefix most tables share is grouped by its next word",
+					"symbols": [
+						"groupByPrefix"
+					]
+				}
+			],
+			"date": "2026-11-20",
+			"version": "0.5.1"
+		},
+		{
+			"changes": [
+				{
 					"detail": "`@absolutejs/dbml/drizzle-source` reads the links an app’s Drizzle schema declares from its source text, parsed with TypeScript (an optional peer) and never run, so it is safe on code nobody has reviewed: inline `.references()`, `relations()` and `defineRelations`, with junction tables, `where` filters, schemas and casing. withAppRelations(model, links) adds them to a live model: a foreign key gains how the app reads it, a link no key enforces becomes an inactive ref, a key the code declares and the database lacks says so, and a link to a table or column the database doesn’t have is left out. The CLI takes `--app <dir>`.",
 					"kind": "added",
 					"summary": "An app’s relations from its Drizzle source, merged into a live database’s links",

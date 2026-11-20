@@ -197,3 +197,40 @@ describe('groups by name prefix', () => {
 		]);
 	});
 });
+
+describe('a prefix most tables share is split further', () => {
+	test('by its next word, the rest staying in it', async () => {
+		const { groupByPrefix } = await import('../src/model');
+		const table = (name: string) => ({
+			checks: [],
+			columns: [],
+			indexes: [],
+			name
+		});
+		const names = [
+			'commerce_inventory_levels',
+			'commerce_inventory_lots',
+			'commerce_inventory_moves',
+			'commerce_purchase_orders',
+			'commerce_purchase_lines',
+			'commerce_purchase_receipts',
+			'commerce_carts',
+			'commerce_refunds',
+			'auth_users',
+			'auth_sessions',
+			'auth_keys',
+			'settings'
+		];
+		expect(
+			groupByPrefix(names.map(table)).map((group) => [
+				group.name,
+				group.tables.length
+			])
+		).toEqual([
+			['commerce_inventory', 3],
+			['commerce_purchase', 3],
+			['commerce', 2],
+			['auth', 3]
+		]);
+	});
+});
