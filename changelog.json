@@ -5,6 +5,53 @@
 		{
 			"changes": [
 				{
+					"detail": "`@absolutejs/dbml/drizzle-source` reads the links an app’s Drizzle schema declares from its source text, parsed with TypeScript (an optional peer) and never run, so it is safe on code nobody has reviewed: inline `.references()`, `relations()` and `defineRelations`, with junction tables, `where` filters, schemas and casing. withAppRelations(model, links) adds them to a live model: a foreign key gains how the app reads it, a link no key enforces becomes an inactive ref, a key the code declares and the database lacks says so, and a link to a table or column the database doesn’t have is left out. The CLI takes `--app <dir>`.",
+					"kind": "added",
+					"summary": "An app’s relations from its Drizzle source, merged into a live database’s links",
+					"symbols": [
+						"withAppRelations",
+						"DbmlAppLink"
+					]
+				},
+				{
+					"detail": "diffModels(before, after) lists every difference between two schemas (two environments, or a database before and after a migration): tables, columns, indexes, checks, table details, facts, links, enums and notes, each matched by name and said as added, removed or changed with how it read before and after. Row estimates and sizes are never a change. The CLI takes `--diff <file.dbml>`.",
+					"kind": "added",
+					"summary": "Compare two schemas",
+					"symbols": [
+						"diffModels",
+						"DbmlChange",
+						"DbmlChangeKind",
+						"DbmlChangeObject",
+						"columnText",
+						"indexText",
+						"refName"
+					]
+				},
+				{
+					"detail": "`@absolutejs/dbml/dbml` reads DBML text back into a model with the official parser (@dbml/core, an optional peer), so a hand-written or printed .dbml file can be drawn, compared or printed again; what this package prints prints the same after a trip through it. The CLI takes `--dbml <file>`.",
+					"kind": "added",
+					"summary": "Read DBML back into a model"
+				},
+				{
+					"detail": "groupByPrefix(tables) makes a table group of each name prefix three or more tables share (`commerce_orders`, `commerce_carts`, ... or `billingInvoices`, ...), the way apps name their modules.",
+					"kind": "added",
+					"summary": "Group tables by name prefix",
+					"symbols": [
+						"groupByPrefix"
+					]
+				},
+				{
+					"detail": "With `statistics`, a Postgres partitioned table reported 0 rows and 0 bytes, since its partitions hold the data. It now reports its partitions’ totals, every level down.",
+					"kind": "fixed",
+					"summary": "A partitioned table’s rows and size are its partitions’"
+				}
+			],
+			"date": "2026-11-20",
+			"version": "0.5.0"
+		},
+		{
+			"changes": [
+				{
 					"detail": "What a table is and does beyond its columns is now data: `table.details` lists its kind (a view with its query, a materialized view, a partitioned or foreign table), what it is partitioned by and its partitions, what it inherits from, its triggers and rules (each with its name and definition on one line), and row-level security with its policies. The printed DBML is the same: the printer writes each detail as a line of the table’s note, as before. `table.note` now holds only the table’s own note (its comment).",
 					"kind": "breaking",
 					"migration": {

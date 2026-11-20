@@ -1,0 +1,60 @@
+# The whole suite on every pull request and push to main, with the live
+# MySQL and MariaDB readers tested against real servers rather than
+# skipped. Specific to this repository (publish.yml is managed elsewhere).
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        server:
+          - name: MySQL 8.4
+            image: mysql:8.4
+            password: MYSQL_ROOT_PASSWORD
+            ping: mysqladmin ping -uroot -pprobe
+          - name: MariaDB 11
+            image: mariadb:11
+            password: MARIADB_ROOT_PASSWORD
+            ping: healthcheck.sh --connect --innodb_initialized
+    name: Tests (${{ matrix.server.name }})
+    services:
+      database:
+        image: ${{ matrix.server.image }}
+        env:
+          ${{ matrix.server.password }}: probe
+          MYSQL_DATABASE: app
+          MARIADB_DATABASE: app
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "${{ matrix.server.ping }}"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      DBML_MYSQL_URL: mysql://root:probe@127.0.0.1:3306/app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run lint
+      - run: bun run build
+      - name: Tests, the MySQL ones included
+        run: bun test
+      - name: The MySQL tests ran
+        run: bun test tests/mysql.test.ts 2>&1 | tee mysql.log; grep -qE '^ +5 pass' mysql.log
